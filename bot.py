@@ -40,7 +40,6 @@ SCHEDULE = {
         ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
         ("20:00", "Феникс", "https://t.me/+1GAp8vi4hyNmMzUy"),
         ("20:00", "По шагам Тони А.", "https://t.me/+ajasg4oH0SU3MjFi"),
-        ("20:00", "Радуга", "https://join.skype.com/Fpva8x9n6WAm"),
         ("21:00", "ДЫШИ!", "https://t.me/breathelivebe"),
         ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
