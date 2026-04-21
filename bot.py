@@ -37,7 +37,6 @@ SCHEDULE = {
         ("14:00", "ВДА вокруг света", "https://t.me/+nFn14RqYkyozZmUy"),
         ("18:00", "Весна", "https://t.me/vdavesna_2021"),
         ("19:00", "Артплей", "https://t.me/VDAartPlay"),
-        ("19:00", "Контейнер", "https://t.me/+c-Yy6Kl_kIlmYzg6"),
         ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
         ("20:00", "Феникс", "https://t.me/+1GAp8vi4hyNmMzUy"),
         ("20:00", "По шагам Тони А.", "https://t.me/+ajasg4oH0SU3MjFi"),
