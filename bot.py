@@ -164,11 +164,11 @@ SLOGANS = [
 MAIN_KB = ReplyKeyboardMarkup(
     keyboard=[
         [
-            KeyboardButton(text="🟠Сегодня"),
-            KeyboardButton(text="🟠Полное расписание"),
+            KeyboardButton(text="🟠 Сегодня"),
+            KeyboardButton(text="🟠 Полное расписание"),
         ],
         [
-            KeyboardButton(text="🟡Случайный девиз ВДА"),
+            KeyboardButton(text="🟡 Случайный девиз ВДА"),
         ],
     ],
     resize_keyboard=True,
@@ -245,17 +245,17 @@ async def cmd_slogan(message: Message):
     await message.answer(f"Девиз ВДА на сейчас:\n\n«{slogan}»")
 
 
-@dp.message(F.text == "Сегодня")
+@dp.message(F.text == "🟠 Сегодня")
 async def btn_today(message: Message):
     await cmd_today(message)
 
 
-@dp.message(F.text == "Полное расписание")
+@dp.message(F.text == "🟠 Полное расписание")
 async def btn_week(message: Message):
     await cmd_week(message)
 
 
-@dp.message(F.text == "Случайный девиз ВДА")
+@dp.message(F.text == "🟡 Случайный девиз ВДА")
 async def btn_slogan(message: Message):
     await cmd_slogan(message)
 
