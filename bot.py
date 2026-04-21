@@ -168,7 +168,32 @@ MAIN_KB = ReplyKeyboardMarkup(
             KeyboardButton(text="🟠 Полное расписание"),
         ],
         [
+            KeyboardButton(text="📅 Выбрать день"),
             KeyboardButton(text="🟡 Случайный девиз ВДА"),
+        ],
+    ],
+    resize_keyboard=True,
+)
+
+DAYS_KB = ReplyKeyboardMarkup(
+    keyboard=[
+        [
+            KeyboardButton(text="Понедельник"),
+            KeyboardButton(text="Вторник"),
+        ],
+        [
+            KeyboardButton(text="Среда"),
+            KeyboardButton(text="Четверг"),
+        ],
+        [
+            KeyboardButton(text="Пятница"),
+            KeyboardButton(text="Суббота"),
+        ],
+        [
+            KeyboardButton(text="Воскресенье"),
+        ],
+        [
+            KeyboardButton(text="⬅️ Назад"),
         ],
     ],
     resize_keyboard=True,
@@ -184,9 +209,15 @@ def get_inline_keyboard(groups):
     )
 
 
+def get_groups_by_day(day_index: int):
+    if day_index < 0 or day_index > 6:
+        return None, []
+    return DAYS[day_index], sorted(SCHEDULE.get(day_index, []), key=lambda x: x[0])
+
+
 def get_today_groups():
     day = datetime.now().weekday()
-    return DAYS[day], sorted(SCHEDULE.get(day, []), key=lambda x: x[0])
+    return get_groups_by_day(day)
 
 
 def get_full_schedule():
@@ -260,15 +291,73 @@ async def btn_slogan(message: Message):
     await cmd_slogan(message)
 
 
+@dp.message(F.text == "📅 Выбрать день")
+async def btn_choose_day(message: Message):
+    await message.answer(
+        "Выбери день недели:",
+        reply_markup=DAYS_KB,
+    )
+
+
+@dp.message(F.text == "Понедельник")
+async def btn_monday(message: Message):
+    day_name, groups = get_groups_by_day(0)
+    await send_groups(message, groups, day_name)
+
+
+@dp.message(F.text == "Вторник")
+async def btn_tuesday(message: Message):
+    day_name, groups = get_groups_by_day(1)
+    await send_groups(message, groups, day_name)
+
+
+@dp.message(F.text == "Среда")
+async def btn_wednesday(message: Message):
+    day_name, groups = get_groups_by_day(2)
+    await send_groups(message, groups, day_name)
+
+
+@dp.message(F.text == "Четверг")
+async def btn_thursday(message: Message):
+    day_name, groups = get_groups_by_day(3)
+    await send_groups(message, groups, day_name)
+
+
+@dp.message(F.text == "Пятница")
+async def btn_friday(message: Message):
+    day_name, groups = get_groups_by_day(4)
+    await send_groups(message, groups, day_name)
+
+
+@dp.message(F.text == "Суббота")
+async def btn_saturday(message: Message):
+    day_name, groups = get_groups_by_day(5)
+    await send_groups(message, groups, day_name)
+
+
+@dp.message(F.text == "Воскресенье")
+async def btn_sunday(message: Message):
+    day_name, groups = get_groups_by_day(6)
+    await send_groups(message, groups, day_name)
+
+
+@dp.message(F.text == "⬅️ Назад")
+async def btn_back(message: Message):
+    await message.answer(
+        "Главное меню:",
+        reply_markup=MAIN_KB,
+    )
+
+
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
     await message.answer(
         "Справка:\n"
-        "/start — начать\n"
+        "/start — открыть главное меню\n"
         "/today — группы на сегодня\n"
         "/week — полное расписание\n"
-        "/slogan — случайный девиз ВДА\n"
-        "/help — помощь",
+        "/slogan — случайный девиз ВДА\n\n"
+        "Или пользуйся кнопками меню ниже.",
         reply_markup=MAIN_KB,
     )
 
