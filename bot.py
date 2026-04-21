@@ -269,11 +269,13 @@ dp = Dispatcher()
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
-    await message.answer(
-        "Привет! Я бот с расписанием онлайн-групп ВДА.\n"
-        "Выбирайте команду на клавиатуре ниже.\n\n"
-        reply_markup=MAIN_KB,
-    )
+await message.answer(
+"Привет! Я бот с расписанием онлайн-групп ВДА.\\n"
+"Выбирайте команду на клавиатуре ниже.\\n\\n"
+"Проект находится на стадии тестирования. "
+"О расхождениях сообщайте, пожалуйста, админу.",
+reply_markup=MAIN_KB,
+)
 
 
 @dp.message(Command("today"))
