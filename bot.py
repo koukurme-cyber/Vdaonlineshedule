@@ -17,7 +17,7 @@ from aiogram.types import (
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 SCHEDULE = {
-    0: [  # Понедельник
+    0: [  # Понедельник (время МСК)
         ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
         ("07:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
         ("08:00", "Единство утро", "https://t.me/ACAgroupUnityMoscow"),
@@ -31,7 +31,7 @@ SCHEDULE = {
         ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
     ],
-    1: [  # Вторник
+    1: [  # Вторник (время МСК)
         ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
         ("07:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
         ("09:00", "Доверие", "https://t.me/VDADoverie"),
@@ -46,7 +46,7 @@ SCHEDULE = {
         ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
     ],
-    2: [  # Среда
+    2: [  # Среда (время МСК)
         ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
         ("07:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
         ("08:00", "Единство утро", "https://t.me/ACAgroupUnityMoscow"),
@@ -67,7 +67,7 @@ SCHEDULE = {
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
         ("22:00", "Восст. Люб. Род.", "https://us02web.zoom.us/j/86893102645?pwd=d2N1UWFDY3Y5RXBpTUdQcWpDdEZVUT09UT09"),
     ],
-    3: [  # Четверг
+    3: [  # Четверг (время МСК)
         ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
         ("07:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
         ("09:00", "Доверие", "https://t.me/VDADoverie"),
@@ -81,9 +81,10 @@ SCHEDULE = {
         ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
     ],
-    4: [  # Пятница
+    4: [  # Пятница (время МСК)
         ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
         ("07:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
+        ("08:00", "Говори Доверяй Чувствуй", "https://t.me/govori_vda"),
         ("08:00", "Единство утро", "https://t.me/ACAgroupUnityMoscow"),
         ("09:00", "Доверие", "https://t.me/VDADoverie"),
         ("12:00", "День за днём", "https://t.me/+BwAsiX1KsGljZjQy"),
@@ -98,7 +99,7 @@ SCHEDULE = {
         ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
     ],
-    5: [  # Суббота
+    5: [  # Суббота (время МСК)
         ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
         ("07:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("08:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
@@ -113,7 +114,7 @@ SCHEDULE = {
         ("20:00", "Восст. Люб. Род.", "https://us02web.zoom.us/j/86893102645?pwd=d2N1UWFDY3Y5RXBpTUdQcWpDdEZVUT09UT09"),
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
     ],
-    6: [  # Воскресенье
+    6: [  # Воскресенье (время МСК)
         ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
         ("08:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
         ("10:00", "ВДА НСК онлайн", "https://t.me/VDANsk"),
@@ -270,8 +271,8 @@ dp = Dispatcher()
 async def cmd_start(message: Message):
     await message.answer(
         "Привет! Я бот с расписанием онлайн-групп ВДА.\n"
-        "Выбирай команду на клавиатуре ниже.\n\n"
-        "Обратите внимание, некоторые ссылки могут быть неактуальны. "
+        "Выбирайте команду на клавиатуре ниже.\n\n"
+        "Проект находится на стадии тестирования. "
         "О расхождениях сообщайте, пожалуйста, админу.",
         reply_markup=MAIN_KB,
     )
