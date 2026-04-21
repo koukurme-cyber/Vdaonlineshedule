@@ -200,7 +200,9 @@ dp = Dispatcher()
 async def cmd_start(message: Message):
     await message.answer(
         "Привет! Я бот с расписанием онлайн-групп ВДА.\n"
-        "Выбирай команду на клавиатуре ниже. Обратите внимание, некоторые ссылки могут быть неактуальны. О расхождениях сообщайте, пожалуйста, админу",
+        "Выбирай команду на клавиатуре ниже. 
+		
+		Обратите внимание, некоторые ссылки могут быть неактуальны. О расхождениях сообщайте, пожалуйста, админу",
         reply_markup=MAIN_KB,
     )
 
@@ -218,12 +220,12 @@ async def cmd_week(message: Message):
         await message.answer(text[i : i + 3800])
 
 
-@dp.message(F.text == "?? Сегодня")
+@dp.message(F.text == "Сегодня")
 async def btn_today(message: Message):
     await cmd_today(message)
 
 
-@dp.message(F.text == "?? Полное расписание")
+@dp.message(F.text == "Полное расписание")
 async def btn_week(message: Message):
     await cmd_week(message)
 
