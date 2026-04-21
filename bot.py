@@ -79,7 +79,6 @@ SCHEDULE = {
         ("21:00", "ДЫШИ!", "https://t.me/breathelivebe"),
         ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
-        ("22:00", "На шаг назад", "https://t.me/joinchat/fidq6JNJEKU4Mjcy"),
     ],
     4: [  # Пятница
         ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
@@ -111,9 +110,7 @@ SCHEDULE = {
         ("19:00", "ВДА-ВЕРА", "https://t.me/+J2m1MAbQ818zNTFi"),
         ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
         ("20:00", "Восст. Люб. Род.", "https://us02web.zoom.us/j/86893102645?pwd=d2N1UWFDY3Y5RXBpTUdQcWpDdEZVUT09UT09"),
-        ("20:00", "Планета ВДА (чтение БКК)", "https://t.me/+BN86dCNJiYUwOWMy"),
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
-        ("22:00", "На шаг назад", "https://t.me/joinchat/fidq6JNJEKU4Mjcy"),
     ],
     6: [  # Воскресенье
         ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
