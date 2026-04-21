@@ -164,11 +164,11 @@ SLOGANS = [
 MAIN_KB = ReplyKeyboardMarkup(
     keyboard=[
         [
-            KeyboardButton(text="Сегодня"),
-            KeyboardButton(text="Полное расписание"),
+            KeyboardButton(text="🟠Сегодня"),
+            KeyboardButton(text="🟠Полное расписание"),
         ],
         [
-            KeyboardButton(text="Случайный девиз ВДА"),
+            KeyboardButton(text="🟡Случайный девиз ВДА"),
         ],
     ],
     resize_keyboard=True,
