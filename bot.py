@@ -173,18 +173,10 @@ SCHEDULE = {
 }
 
 DAYS = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
-
-MAIN_KB = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="📅 Сегодня"), KeyboardButton(text="📆 Полное расписание")],
-    ],
-    resize_keyboard=True,
-)
+MAIN_KB = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="📅 Сегодня"), KeyboardButton(text="📆 Полное расписание")]], resize_keyboard=True)
 
 def get_inline_keyboard(groups):
-    return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text=f"{time} {name}", url=url)] for time, name, url in groups]
-    )
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{time} {name}", url=url)] for time, name, url in groups])
 
 def get_today_groups():
     day = datetime.now().weekday()
@@ -217,12 +209,8 @@ dp = Dispatcher()
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
-    await message.answer(
-        "Привет! Я бот с расписанием онлайн-групп ВДА.
-"
-        "Выбирай команду на клавиатуре ниже.",
-        reply_markup=MAIN_KB,
-    )
+    await message.answer("Привет! Я бот с расписанием онлайн-групп ВДА.
+Выбирай команду на клавиатуре ниже.", reply_markup=MAIN_KB)
 
 @dp.message(Command("today"))
 async def cmd_today(message: Message):
@@ -234,9 +222,8 @@ async def cmd_week(message: Message):
     text = "Расписание ВДА на неделю:
 
 " + get_full_schedule()
-    chunks = [text[i:i + 3800] for i in range(0, len(text), 3800)]
-    for chunk in chunks:
-        await message.answer(chunk)
+    for i in range(0, len(text), 3800):
+        await message.answer(text[i:i + 3800])
 
 @dp.message(F.text == "📅 Сегодня")
 async def btn_today(message: Message):
@@ -248,18 +235,11 @@ async def btn_week(message: Message):
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
-    await message.answer(
-        "Справка:
-"
-        "/start — начать
-"
-        "/today — группы на сегодня
-"
-        "/week — полное расписание
-"
-        "/help — помощь",
-        reply_markup=MAIN_KB,
-    )
+    await message.answer("Справка:
+/start — начать
+/today — группы на сегодня
+/week — полное расписание
+/help — помощь", reply_markup=MAIN_KB)
 
 async def main():
     if not BOT_TOKEN:
