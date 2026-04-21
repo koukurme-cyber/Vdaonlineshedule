@@ -7,6 +7,7 @@ from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.types import (
     Message,
+    CallbackQuery,
     ReplyKeyboardMarkup,
     KeyboardButton,
     InlineKeyboardMarkup,
@@ -175,30 +176,6 @@ MAIN_KB = ReplyKeyboardMarkup(
     resize_keyboard=True,
 )
 
-DAYS_KB = ReplyKeyboardMarkup(
-    keyboard=[
-        [
-            KeyboardButton(text="Понедельник"),
-            KeyboardButton(text="Вторник"),
-        ],
-        [
-            KeyboardButton(text="Среда"),
-            KeyboardButton(text="Четверг"),
-        ],
-        [
-            KeyboardButton(text="Пятница"),
-            KeyboardButton(text="Суббота"),
-        ],
-        [
-            KeyboardButton(text="Воскресенье"),
-        ],
-        [
-            KeyboardButton(text="⬅️ Назад"),
-        ],
-    ],
-    resize_keyboard=True,
-)
-
 
 def escape_html(text: str) -> str:
     return (
@@ -213,6 +190,28 @@ def get_inline_keyboard(groups):
         inline_keyboard=[
             [InlineKeyboardButton(text=f"{time} {name}", url=url)]
             for time, name, url in groups
+        ]
+    )
+
+
+def get_days_inline_keyboard():
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Понедельник", callback_data="day_0"),
+                InlineKeyboardButton(text="Вторник", callback_data="day_1"),
+            ],
+            [
+                InlineKeyboardButton(text="Среда", callback_data="day_2"),
+                InlineKeyboardButton(text="Четверг", callback_data="day_3"),
+            ],
+            [
+                InlineKeyboardButton(text="Пятница", callback_data="day_4"),
+                InlineKeyboardButton(text="Суббота", callback_data="day_5"),
+            ],
+            [
+                InlineKeyboardButton(text="Воскресенье", callback_data="day_6"),
+            ],
         ]
     )
 
@@ -328,57 +327,29 @@ async def btn_slogan(message: Message):
 async def btn_choose_day(message: Message):
     await message.answer(
         "Выбери день недели:",
-        reply_markup=DAYS_KB,
+        reply_markup=get_days_inline_keyboard(),
     )
 
 
-@dp.message(F.text == "Понедельник")
-async def btn_monday(message: Message):
-    day_name, groups = get_groups_by_day(0)
-    await send_groups(message, groups, day_name)
+@dp.callback_query(F.data.startswith("day_"))
+async def process_day_callback(callback: CallbackQuery):
+    await callback.answer()
 
+    day_index = int(callback.data.split("_")[1])
+    day_name, groups = get_groups_by_day(day_index)
 
-@dp.message(F.text == "Вторник")
-async def btn_tuesday(message: Message):
-    day_name, groups = get_groups_by_day(1)
-    await send_groups(message, groups, day_name)
+    if not groups:
+        await callback.message.answer(f"На {day_name.lower()} групп нет.")
+        return
 
+    lines = [f"{day_name}:"]
+    for time, name, url in groups:
+        lines.append(f"{time} — {name}")
 
-@dp.message(F.text == "Среда")
-async def btn_wednesday(message: Message):
-    day_name, groups = get_groups_by_day(2)
-    await send_groups(message, groups, day_name)
-
-
-@dp.message(F.text == "Четверг")
-async def btn_thursday(message: Message):
-    day_name, groups = get_groups_by_day(3)
-    await send_groups(message, groups, day_name)
-
-
-@dp.message(F.text == "Пятница")
-async def btn_friday(message: Message):
-    day_name, groups = get_groups_by_day(4)
-    await send_groups(message, groups, day_name)
-
-
-@dp.message(F.text == "Суббота")
-async def btn_saturday(message: Message):
-    day_name, groups = get_groups_by_day(5)
-    await send_groups(message, groups, day_name)
-
-
-@dp.message(F.text == "Воскресенье")
-async def btn_sunday(message: Message):
-    day_name, groups = get_groups_by_day(6)
-    await send_groups(message, groups, day_name)
-
-
-@dp.message(F.text == "⬅️ Назад")
-async def btn_back(message: Message):
-    await message.answer(
-        "Главное меню:",
-        reply_markup=MAIN_KB,
+    await callback.message.answer("\n".join(lines))
+    await callback.message.answer(
+        "Нажми на группу:",
+        reply_markup=get_inline_keyboard(groups),
     )
 
 
