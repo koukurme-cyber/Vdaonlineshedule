@@ -151,7 +151,7 @@ DAYS = [
 ]
 
 MAIN_KB = ReplyKeyboardMarkup(
-    keyboard=[[KeyboardButton(text="?? Сегодня"), KeyboardButton(text="?? Полное расписание")]],
+    keyboard=[[KeyboardButton(text="Сегодня"), KeyboardButton(text="Полное расписание")]],
     resize_keyboard=True,
 )
 
