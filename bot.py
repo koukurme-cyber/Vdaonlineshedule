@@ -1,5 +1,3 @@
-
-Сгенерированный код
 from pathlib import Path
 code = '''import asyncio
 import os
