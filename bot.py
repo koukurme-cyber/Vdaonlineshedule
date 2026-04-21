@@ -1,5 +1,6 @@
 import asyncio
 import os
+import random
 from datetime import datetime
 
 from aiogram import Bot, Dispatcher, F
@@ -60,7 +61,6 @@ SCHEDULE = {
         ("19:30", "Эффект бабочки", "https://t.me/+FcaUkHDOuMpkMTI8"),
         ("20:00", "Мужская ВДА", "https://t.me/+ewtjezZaCtM5YTdi"),
         ("20:00", "Доверие (вопросы)", "https://t.me/VDADoverie"),
-        ("20:30", "Добро", "https://join.skype.com/k0pSI6mPlfgq"),
         ("21:00", "ДЫШИ!", "https://t.me/breathelivebe"),
         ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
@@ -76,12 +76,10 @@ SCHEDULE = {
         ("19:00", "праВДА", "https://t.me/+ZYfdfXWBRltjZGEy"),
         ("19:00", "Артплей (онлайн)", "https://t.me/VDAartPlay"),
         ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
-        ("20:00", "Радуга", "https://join.skype.com/Fpva8x9n6WAm"),
         ("21:00", "ДЫШИ!", "https://t.me/breathelivebe"),
         ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
         ("22:00", "На шаг назад", "https://t.me/joinchat/fidq6JNJEKU4Mjcy"),
-        ("23:00", "Тёплая. Ламповая.", "https://join.skype.com/gMfX6RMsBksc"),
     ],
     4: [  # Пятница
         ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
@@ -99,7 +97,6 @@ SCHEDULE = {
         ("21:00", "ДЫШИ!", "https://t.me/breathelivebe"),
         ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
-
     ],
     5: [  # Суббота
         ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
@@ -123,10 +120,8 @@ SCHEDULE = {
         ("08:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
         ("10:00", "ВДА НСК онлайн", "https://t.me/VDANsk"),
         ("12:00", "День за днём", "https://t.me/+BwAsiX1KsGljZjQy"),
-        ("12:00", "Только сегодня", "https://t.me/+7yVhGpLZEzFjMjcy"),
         ("12:30", "Мужская ВДА", "https://t.me/+ewtjezZaCtM5YTdi"),
         ("14:00", "Венеция", "https://t.me/joinchat/AocB9y6QC_k2ZjJi"),
-        ("15:00", "Лето ВДА", "https://t.me/leto_vda"),
         ("18:00", "Ежедневник ВДА", "https://t.me/VDAOXOTNIRYAD"),
         ("18:00", "Весна", "https://t.me/vdavesna_2021"),
         ("19:00", "Сила и Надежда", "https://chat.whatsapp.com/CUc0VVemIvl7Aoe2cuYCav"),
@@ -148,8 +143,37 @@ DAYS = [
     "Воскресенье",
 ]
 
+SLOGANS = [
+    "Программа ВДА простая, но не лёгкая",
+    "Жизнь больше, чем просто выживание",
+    "Можно жить по-другому",
+    "Только сегодня",
+    "Не суетись",
+    "Не усложняй",
+    "Прогресс, а не совершенство",
+    "Первым делом — главное",
+    "И эта боль тоже пройдет",
+    "Отпусти. Пусти Бога",
+    "Стоп — не будь Голодным, Злым, Одиноким и Уставшим",
+    "Возвращайтесь снова и снова",
+    "Назови, но не обвиняй",
+    "Попроси о помощи и прими её",
+    "Молись и молись усердно",
+    "Ничего не предпринимай. Подожди",
+    "Будь спокоен и осознан",
+    "Без чувств нет исцеления",
+]
+
 MAIN_KB = ReplyKeyboardMarkup(
-    keyboard=[[KeyboardButton(text="Сегодня"), KeyboardButton(text="Полное расписание")]],
+    keyboard=[
+        [
+            KeyboardButton(text="Сегодня"),
+            KeyboardButton(text="Полное расписание"),
+        ],
+        [
+            KeyboardButton(text="Случайный девиз ВДА"),
+        ],
+    ],
     resize_keyboard=True,
 )
 
@@ -218,6 +242,12 @@ async def cmd_week(message: Message):
         await message.answer(text[i : i + 3800])
 
 
+@dp.message(Command("slogan"))
+async def cmd_slogan(message: Message):
+    slogan = random.choice(SLOGANS)
+    await message.answer(f"Девиз ВДА на сейчас:\n\n«{slogan}»")
+
+
 @dp.message(F.text == "Сегодня")
 async def btn_today(message: Message):
     await cmd_today(message)
@@ -228,6 +258,11 @@ async def btn_week(message: Message):
     await cmd_week(message)
 
 
+@dp.message(F.text == "Случайный девиз ВДА")
+async def btn_slogan(message: Message):
+    await cmd_slogan(message)
+
+
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
     await message.answer(
@@ -235,6 +270,7 @@ async def cmd_help(message: Message):
         "/start — начать\n"
         "/today — группы на сегодня\n"
         "/week — полное расписание\n"
+        "/slogan — случайный девиз ВДА\n"
         "/help — помощь",
         reply_markup=MAIN_KB,
     )
