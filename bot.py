@@ -200,6 +200,14 @@ DAYS_KB = ReplyKeyboardMarkup(
 )
 
 
+def escape_html(text: str) -> str:
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
 def get_inline_keyboard(groups):
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -220,25 +228,45 @@ def get_today_groups():
     return get_groups_by_day(day)
 
 
-def get_full_schedule():
-    lines = []
+def get_full_schedule_html_parts():
+    parts = []
+    current_part = "<b>Расписание ВДА на неделю:</b>\n\n"
+
     for i, day_name in enumerate(DAYS):
         groups = sorted(SCHEDULE.get(i, []), key=lambda x: x[0])
-        if groups:
-            lines.append(f"{day_name}:")
-            for time, name, url in groups:
-                lines.append(f"{time} — {name} — {url}")
-            lines.append("")
-    return "\n".join(lines).strip()
+
+        if not groups:
+            continue
+
+        block_lines = [f"<b>{escape_html(day_name)}:</b>"]
+        for time, name, url in groups:
+            safe_name = escape_html(name)
+            block_lines.append(f'{time} — <a href="{url}">{safe_name}</a>')
+        block_lines.append("")
+
+        block = "\n".join(block_lines)
+
+        if len(current_part) + len(block) > 3500:
+            parts.append(current_part.strip())
+            current_part = block + "\n"
+        else:
+            current_part += block + "\n"
+
+    if current_part.strip():
+        parts.append(current_part.strip())
+
+    return parts
 
 
 async def send_groups(message: Message, groups, day_name: str):
     if not groups:
         await message.answer(f"На {day_name.lower()} групп нет.")
         return
+
     lines = [f"{day_name}:"]
     for time, name, url in groups:
         lines.append(f"{time} — {name}")
+
     await message.answer("\n".join(lines))
     await message.answer("Нажми на группу:", reply_markup=get_inline_keyboard(groups))
 
@@ -265,9 +293,14 @@ async def cmd_today(message: Message):
 
 @dp.message(Command("week"))
 async def cmd_week(message: Message):
-    text = "Расписание ВДА на неделю:\n\n" + get_full_schedule()
-    for i in range(0, len(text), 3800):
-        await message.answer(text[i : i + 3800])
+    parts = get_full_schedule_html_parts()
+
+    for part in parts:
+        await message.answer(
+            part,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
 
 
 @dp.message(Command("slogan"))
@@ -366,6 +399,7 @@ async def main():
     if not BOT_TOKEN:
         print("Ошибка: BOT_TOKEN не задан в переменных окружения")
         return
+
     bot = Bot(token=BOT_TOKEN)
     await dp.start_polling(bot)
 
