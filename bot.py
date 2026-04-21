@@ -185,15 +185,6 @@ def escape_html(text: str) -> str:
     )
 
 
-def get_inline_keyboard(groups):
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=f"{time} {name}", url=url)]
-            for time, name, url in groups
-        ]
-    )
-
-
 def get_days_inline_keyboard():
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -227,6 +218,18 @@ def get_today_groups():
     return get_groups_by_day(day)
 
 
+def build_day_schedule_html(day_name: str, groups):
+    if not groups:
+        return f"На {day_name.lower()} групп нет."
+
+    lines = [f"<b>{escape_html(day_name)}:</b>"]
+    for time, name, url in groups:
+        safe_name = escape_html(name)
+        lines.append(f'{time} — <a href="{url}">{safe_name}</a>')
+
+    return "\n".join(lines)
+
+
 def get_full_schedule_html_parts():
     parts = []
     current_part = "<b>Расписание ВДА на неделю:</b>\n\n"
@@ -237,19 +240,13 @@ def get_full_schedule_html_parts():
         if not groups:
             continue
 
-        block_lines = [f"<b>{escape_html(day_name)}:</b>"]
-        for time, name, url in groups:
-            safe_name = escape_html(name)
-            block_lines.append(f'{time} — <a href="{url}">{safe_name}</a>')
-        block_lines.append("")
-
-        block = "\n".join(block_lines)
+        block = build_day_schedule_html(day_name, groups) + "\n\n"
 
         if len(current_part) + len(block) > 3500:
             parts.append(current_part.strip())
-            current_part = block + "\n"
+            current_part = block
         else:
-            current_part += block + "\n"
+            current_part += block
 
     if current_part.strip():
         parts.append(current_part.strip())
@@ -257,17 +254,13 @@ def get_full_schedule_html_parts():
     return parts
 
 
-async def send_groups(message: Message, groups, day_name: str):
-    if not groups:
-        await message.answer(f"На {day_name.lower()} групп нет.")
-        return
-
-    lines = [f"{day_name}:"]
-    for time, name, url in groups:
-        lines.append(f"{time} — {name}")
-
-    await message.answer("\n".join(lines))
-    await message.answer("Нажми на группу:", reply_markup=get_inline_keyboard(groups))
+async def send_day_schedule(message: Message, day_name: str, groups):
+    text = build_day_schedule_html(day_name, groups)
+    await message.answer(
+        text,
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
 
 
 dp = Dispatcher()
@@ -287,7 +280,7 @@ async def cmd_start(message: Message):
 @dp.message(Command("today"))
 async def cmd_today(message: Message):
     day_name, groups = get_today_groups()
-    await send_groups(message, groups, day_name)
+    await send_day_schedule(message, day_name, groups)
 
 
 @dp.message(Command("week"))
@@ -338,19 +331,7 @@ async def process_day_callback(callback: CallbackQuery):
     day_index = int(callback.data.split("_")[1])
     day_name, groups = get_groups_by_day(day_index)
 
-    if not groups:
-        await callback.message.answer(f"На {day_name.lower()} групп нет.")
-        return
-
-    lines = [f"{day_name}:"]
-    for time, name, url in groups:
-        lines.append(f"{time} — {name}")
-
-    await callback.message.answer("\n".join(lines))
-    await callback.message.answer(
-        "Нажми на группу:",
-        reply_markup=get_inline_keyboard(groups),
-    )
+    await send_day_schedule(callback.message, day_name, groups)
 
 
 @dp.message(Command("help"))
