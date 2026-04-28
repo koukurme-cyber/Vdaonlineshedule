@@ -130,7 +130,7 @@ SCHEDULE = {
         ("07:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("08:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
         ("10:00", "ВДА НСК онлайн", "https://t.me/VDANsk"),
-        ("12:00", "Только сегодня (MAX), https://max.ru/join/y25EwyRl_K_F1OeJv5JbewpRpww71IKfWS-gwtTB65Q"),
+        ("12:00", "Только сегодня (MAX)", "https://max.ru/join/y25EwyRl_K_F1OeJv5JbewpRpww71IKfWS-gwtTB65Q"),
         ("12:00", "День за днём", "https://t.me/+BwAsiX1KsGljZjQy"),
         ("12:30", "Мужская ВДА", "https://t.me/+ewtjezZaCtM5YTdi"),
         ("14:00", "Венеция", "https://t.me/joinchat/AocB9y6QC_k2ZjJi"),
