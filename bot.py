@@ -136,7 +136,7 @@ SCHEDULE = {
         ("14:00", "Венеция", "https://t.me/joinchat/AocB9y6QC_k2ZjJi"),
         ("18:00", "Ежедневник ВДА", "https://t.me/VDAOXOTNIRYAD"),
         ("18:00", "Весна", "https://t.me/vdavesna_2021"),
-        ("19:00", "Сила и Надежда (Watsup)", "https://chat.whatsapp.com/CUc0VVemIvl7Aoe2cuYCav"),
+        ("19:00", "Сила и Надежда (Whatsup)", "https://chat.whatsapp.com/CUc0VVemIvl7Aoe2cuYCav"),
         ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
         ("19:30", "Эффект бабочки", "https://t.me/+FcaUkHDOuMpkMTI8"),
         ("20:00", "Огоньки", "https://t.me/ogonki2025"),
@@ -246,25 +246,36 @@ def build_day_schedule_html(day_name: str, groups):
 
 
 def get_full_schedule_html_parts():
+    """Разбивает полное расписание на части, подходящие для Telegram."""
     parts = []
     current_part = "<b>Расписание ВДА на неделю:</b>\n\n"
 
     for i, day_name in enumerate(DAYS):
         groups = sorted(SCHEDULE.get(i, []), key=lambda x: x[0])
-
+        
         if not groups:
             continue
-
-        block = build_day_schedule_html(day_name, groups) + "\n\n"
-
-        if len(current_part) + len(block) > 3500:
-            parts.append(current_part.strip())
-            current_part = block
+        
+        # Создаем блок для текущего дня
+        day_block = build_day_schedule_html(day_name, groups) + "\n\n"
+        
+        # Проверяем, поместится ли день в текущую часть
+        if len(current_part) + len(day_block) > 3500:
+            # Сохраняем текущую часть
+            if current_part.strip():
+                parts.append(current_part.strip())
+            # Начинаем новую часть
+            current_part = day_block
         else:
-            current_part += block
+            current_part += day_block
 
+    # Добавляем последнюю часть, если она не пустая
     if current_part.strip():
         parts.append(current_part.strip())
+    
+    # Если расписание пустое (на всякий случай)
+    if not parts:
+        parts.append("<b>Расписание ВДА на неделю:</b>\n\nНа этой неделе нет запланированных групп.")
 
     return parts
 
