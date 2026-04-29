@@ -25,6 +25,14 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 class LiveGroupSearch(StatesGroup):
     waiting_for_city = State()
 
+reply_main_menu = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="🌐 Онлайн"), KeyboardButton(text="🏙 Живые"), KeyboardButton(text="💫 Установка")],
+    ],
+    resize_keyboard=True,
+    is_persistent=True,
+)
+
 
 # ==================== ВРЕМЯ ====================
 def moscow_now():
