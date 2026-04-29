@@ -310,10 +310,9 @@ class LiveGroupSearch(StatesGroup):
 reply_main_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🌐 Онлайн"), KeyboardButton(text="🏙 Живые"), KeyboardButton(text="💫 Установка")],
-        [KeyboardButton(text="🔄 Запустить бота")]
     ],
     resize_keyboard=True,
-    is_persistent=True,  # ← ключевое изменение
+    is_persistent=True,
 )
 
 def get_days_keyboard(prefix: str) -> InlineKeyboardMarkup:
@@ -402,11 +401,6 @@ async def cmd_start(message: Message):
         parse_mode="HTML",
         reply_markup=reply_main_menu
     )
-
-# Обработчик кнопки "Запустить бота"
-@dp.message(F.text == "🔄 Запустить бота")
-async def restart_bot(message: Message):
-    await cmd_start(message)
 
 # Обработчики постоянных кнопок
 @dp.message(F.text == "🌐 Онлайн")
@@ -557,7 +551,6 @@ async def cmd_help(message: Message):
         "🌐 Онлайн — расписание онлайн-групп\n"
         "🏙 Живые — очные собрания по городам\n"
         "💫 Установка — случайная аффирмация\n"
-        "🔄 Запустить бота — перезапустить меню\n\n"
         "Команды: /start, /help, /slogan",
         parse_mode="HTML",
         reply_markup=reply_main_menu
