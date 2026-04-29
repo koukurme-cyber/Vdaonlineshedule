@@ -537,7 +537,7 @@ async def live_today(callback: CallbackQuery):
     text += "\n".join(format_live_group(n, a, s, e) for n, a, s, e in groups) if groups else "Сегодня групп нет."
     await callback.message.edit_text(text, parse_mode="HTML",
                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                                         [InlineKeyboardButton(text="← Назад", callback_data=f"live_back_period_{city}")]
+                                         [InlineKeyboardButton(text="← Назад", callback_data=f"live_period_{city_to_id(city)}")]
                                      ]))
     await callback.answer()
 
@@ -548,7 +548,7 @@ async def live_week(callback: CallbackQuery):
     text = get_live_week(city)
     await callback.message.edit_text(text, parse_mode="HTML",
                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                                         [InlineKeyboardButton(text="← Назад", callback_data=f"live_back_period_{city}")]
+                                         [InlineKeyboardButton(text="← Назад", callback_data=f"live_period_{city_to_id(city)}")]
                                      ]))
     await callback.answer()
 
@@ -588,17 +588,6 @@ async def live_show_day(callback: CallbackQuery):
     await callback.answer()
 
 # Возврат к выбору периода для города
-@dp.callback_query(F.data.startswith("live_back_period_"))
-async def back_to_period(callback: CallbackQuery):
-    city = callback.data[len("live_back_period_"):]
-    await callback.message.edit_text(
-        f"🏙 Город: <b>{escape_html(city)}</b>\nВыберите период:",
-        parse_mode="HTML",
-        reply_markup=live_period_keyboard(city)
-    )
-    await callback.answer()
-
-# Живые: поиск города текстом
 @dp.callback_query(F.data == "live_search_city")
 async def live_search_city_start(callback: CallbackQuery, state: FSMContext):
     await state.set_state(LiveGroupSearch.waiting_for_city)
