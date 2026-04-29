@@ -216,7 +216,6 @@ def parse_live_schedule(raw_lines: str):
             })
     return groups
 
-# Читаем файл live_groups.tsv (должен лежать рядом с ботом)
 try:
     with open("live_groups.tsv", "r", encoding="utf-8") as f:
         raw_excel = f.read()
@@ -290,7 +289,6 @@ def format_live_group(name: str, address: str, time_start: str, time_end: str) -
     return f'📍 <b>{time_start}-{time_end}</b> — {safe_name}\n   {safe_addr}'
 
 def split_long_message(text: str, limit: int = 3800) -> List[str]:
-    """Разбивает длинное сообщение на части по переносам строк."""
     parts = []
     while len(text) > limit:
         cut = text.rfind("\n", 0, limit)
@@ -307,44 +305,45 @@ class LiveGroupSearch(StatesGroup):
     waiting_for_city = State()
 
 # ==================== КЛАВИАТУРЫ ====================
-def main_menu_keyboard():
+# Постоянная Reply-клавиатура (три кнопки)
+reply_main_menu = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="🌐 Онлайн"), KeyboardButton(text="🏙 Живые"), KeyboardButton(text="💫 Установка")]
+    ],
+    resize_keyboard=True
+)
+
+def get_days_keyboard(prefix: str) -> InlineKeyboardMarkup:
+    """Универсальная клавиатура выбора дня недели."""
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🌐 Онлайн-расписание", callback_data="mode_online"),
-                InlineKeyboardButton(text="🏙 Живые группы", callback_data="mode_live"))
-    builder.row(InlineKeyboardButton(text="💫 Установка на день", callback_data="slogan"))
+    for i, day_name in enumerate(DAYS):
+        builder.button(text=day_name, callback_data=f"{prefix}{i}")
+    builder.adjust(2)
     return builder.as_markup()
 
-def back_to_main_button():
-    return InlineKeyboardButton(text="🔙 Главное меню", callback_data="main_menu")
-
+# --- Онлайн ---
 def online_menu_keyboard():
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="📅 Сегодня", callback_data="online_today"),
                 InlineKeyboardButton(text="📋 Полное", callback_data="online_full"))
-    builder.row(back_to_main_button())
+    builder.row(InlineKeyboardButton(text="📆 Выбрать день", callback_data="online_choose_day"))
     return builder.as_markup()
 
+# --- Живые ---
 def live_city_keyboard():
     builder = InlineKeyboardBuilder()
     for city in POPULAR_CITIES:
-        builder.row(InlineKeyboardButton(text=city, callback_data=f"live_city_{city}"))
-    builder.row(InlineKeyboardButton(text="✍️ Ввести другой город", callback_data="live_city_manual"))
-    builder.row(back_to_main_button())
+        builder.button(text=city, callback_data=f"live_city_{city}")
+    builder.adjust(2)
     return builder.as_markup()
 
 def live_period_keyboard(city: str):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="📅 Сегодня", callback_data=f"live_today_{city}"),
                 InlineKeyboardButton(text="📋 Вся неделя", callback_data=f"live_week_{city}"))
-    builder.row(InlineKeyboardButton(text="🔄 Выбрать другой город", callback_data="mode_live"),
-                back_to_main_button())
+    builder.row(InlineKeyboardButton(text="📆 Выбрать день", callback_data=f"live_choose_day_{city}"))
+    builder.row(InlineKeyboardButton(text="← Назад", callback_data="mode_live"))
     return builder.as_markup()
-
-# Постоянная Reply-клавиатура (снизу)
-reply_main_menu = ReplyKeyboardMarkup(
-    keyboard=[[KeyboardButton(text="🔄 Главное меню")]],
-    resize_keyboard=True
-)
 
 # ==================== БИЗНЕС-ЛОГИКА ====================
 def get_online_by_day(day_index: int):
@@ -396,45 +395,24 @@ dp = Dispatcher(storage=MemoryStorage())
 async def cmd_start(message: Message):
     await message.answer(
         "🕊 <b>Добро пожаловать в бот ВДА!</b>\n\n"
-        "Выберите режим работы:\n"
-        "🌐 <b>Онлайн-расписание</b> — группы, проходящие в интернете\n"
-        "🏙 <b>Живые группы</b> — очные собрания по всей России\n\n"
-        "Или нажмите «Установка на день».",
+        "Используйте кнопки ниже для навигации.",
         parse_mode="HTML",
-        reply_markup=main_menu_keyboard()
+        reply_markup=reply_main_menu
     )
-    await message.answer("Используйте кнопку ниже, чтобы вернуться в главное меню.", reply_markup=reply_main_menu)
 
-@dp.message(F.text == "🔄 Главное меню")
-async def back_to_start(message: Message):
-    await cmd_start(message)
+# Обработчики постоянных кнопок
+@dp.message(F.text == "🌐 Онлайн")
+async def btn_online(message: Message):
+    await message.answer("🌐 <b>Онлайн-расписание ВДА</b>", parse_mode="HTML", reply_markup=online_menu_keyboard())
 
-@dp.callback_query(F.data == "main_menu")
-async def show_main_menu(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "Выберите режим:",
-        parse_mode="HTML",
-        reply_markup=main_menu_keyboard()
-    )
-    await callback.answer()
+@dp.message(F.text == "🏙 Живые")
+async def btn_live(message: Message):
+    await message.answer("🏙 <b>Выберите город:</b>", parse_mode="HTML", reply_markup=live_city_keyboard())
 
-@dp.callback_query(F.data == "mode_online")
-async def choose_online(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "🌐 <b>Онлайн-расписание ВДА</b>\nВыберите действие:",
-        parse_mode="HTML",
-        reply_markup=online_menu_keyboard()
-    )
-    await callback.answer()
-
-@dp.callback_query(F.data == "mode_live")
-async def choose_live(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "🏙 <b>Живые группы</b>\nВыберите город из списка или введите вручную:",
-        parse_mode="HTML",
-        reply_markup=live_city_keyboard()
-    )
-    await callback.answer()
+@dp.message(F.text == "💫 Установка")
+async def btn_slogan(message: Message):
+    slogan = random.choice(SLOGANS_AND_AFFIRMATIONS)
+    await message.answer(f"💫 <b>Установка на день:</b>\n\n<i>«{escape_html(slogan)}»</i>", parse_mode="HTML")
 
 # --- Онлайн-расписание ---
 @dp.callback_query(F.data == "online_today")
@@ -444,7 +422,9 @@ async def online_today(callback: CallbackQuery):
     text = f"📅 <b>Онлайн-группы на сегодня ({DAYS[day_index]}):</b>\n\n"
     text += "\n".join(format_online_group(t, n, u) for t, n, u in groups) if groups else "Сегодня групп нет."
     await callback.message.edit_text(text, parse_mode="HTML", disable_web_page_preview=True,
-                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="mode_online")]]))
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                                         [InlineKeyboardButton(text="← Назад", callback_data="mode_online")]
+                                     ]))
     await callback.answer()
 
 @dp.callback_query(F.data == "online_full")
@@ -456,22 +436,33 @@ async def online_full(callback: CallbackQuery):
         if idx == len(parts) - 1:
             await callback.message.answer(part, parse_mode="HTML", disable_web_page_preview=True,
                                           reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                                              [InlineKeyboardButton(text="🔙 Назад", callback_data="mode_online")]
+                                              [InlineKeyboardButton(text="← Назад", callback_data="mode_online")]
                                           ]))
         else:
             await callback.message.answer(part, parse_mode="HTML", disable_web_page_preview=True)
     await callback.answer()
 
-# --- Живые группы: выбор города ---
+@dp.callback_query(F.data == "online_choose_day")
+async def online_choose_day(callback: CallbackQuery):
+    await callback.message.edit_text("📆 Выберите день недели:", reply_markup=get_days_keyboard("online_day_"))
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("online_day_"))
+async def online_show_day(callback: CallbackQuery):
+    day_index = int(callback.data.split("_")[-1])
+    groups = get_online_by_day(day_index)
+    text = f"📅 <b>Онлайн-группы на {DAYS[day_index]}:</b>\n\n"
+    text += "\n".join(format_online_group(t, n, u) for t, n, u in groups) if groups else "В этот день групп нет."
+    await callback.message.edit_text(text, parse_mode="HTML", disable_web_page_preview=True,
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                                         [InlineKeyboardButton(text="← Назад", callback_data="online_choose_day")]
+                                     ]))
+    await callback.answer()
+
+# --- Живые группы ---
 @dp.callback_query(F.data.startswith("live_city_"))
-async def process_city_selection(callback: CallbackQuery, state: FSMContext):
-    data = callback.data[len("live_city_"):]
-    if data == "manual":
-        await callback.message.edit_text("Введите название города:")
-        await state.set_state(LiveGroupSearch.waiting_for_city)
-        await callback.answer()
-        return
-    city = data
+async def process_city_selection(callback: CallbackQuery):
+    city = callback.data[len("live_city_"):]
     await callback.message.edit_text(
         f"🏙 Город: <b>{escape_html(city)}</b>\nВыберите период:",
         parse_mode="HTML",
@@ -479,20 +470,12 @@ async def process_city_selection(callback: CallbackQuery, state: FSMContext):
     )
     await callback.answer()
 
-@dp.message(StateFilter(LiveGroupSearch.waiting_for_city))
-async def manual_city_input(message: Message, state: FSMContext):
-    city = message.text.strip()
-    if not city:
-        await message.answer("Пожалуйста, введите название города.")
-        return
-    await state.clear()
-    await message.answer(
-        f"🏙 Город: <b>{escape_html(city)}</b>\nВыберите период:",
-        parse_mode="HTML",
-        reply_markup=live_period_keyboard(city)
-    )
+@dp.callback_query(F.data == "mode_live")
+async def back_to_live_cities(callback: CallbackQuery):
+    await callback.message.edit_text("🏙 <b>Выберите город:</b>", parse_mode="HTML", reply_markup=live_city_keyboard())
+    await callback.answer()
 
-# --- Живые группы: показ расписания ---
+# Живые: сегодня
 @dp.callback_query(F.data.startswith("live_today_"))
 async def live_today(callback: CallbackQuery):
     city = callback.data[len("live_today_"):]
@@ -500,22 +483,50 @@ async def live_today(callback: CallbackQuery):
     groups = get_live_groups_for_day(city, day_index)
     text = f"📅 <b>Живые группы в {escape_html(city)} на сегодня ({DAYS[day_index]}):</b>\n\n"
     text += "\n".join(format_live_group(n, a, s, e) for n, a, s, e in groups) if groups else "Сегодня групп нет."
-    back_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"live_back_period_{city}")]
-    ])
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=back_kb)
+    await callback.message.edit_text(text, parse_mode="HTML",
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                                         [InlineKeyboardButton(text="← Назад", callback_data=f"live_back_period_{city}")]
+                                     ]))
     await callback.answer()
 
+# Живые: вся неделя
 @dp.callback_query(F.data.startswith("live_week_"))
 async def live_week(callback: CallbackQuery):
     city = callback.data[len("live_week_"):]
     text = get_live_week(city)
-    back_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"live_back_period_{city}")]
-    ])
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=back_kb)
+    await callback.message.edit_text(text, parse_mode="HTML",
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                                         [InlineKeyboardButton(text="← Назад", callback_data=f"live_back_period_{city}")]
+                                     ]))
     await callback.answer()
 
+# Живые: выбор дня
+@dp.callback_query(F.data.startswith("live_choose_day_"))
+async def live_choose_day(callback: CallbackQuery):
+    city = callback.data[len("live_choose_day_"):]
+    await callback.message.edit_text(f"📆 Выберите день недели ({escape_html(city)}):",
+                                     reply_markup=get_days_keyboard(f"live_day_{city}_"))
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("live_day_"))
+async def live_show_day(callback: CallbackQuery):
+    # callback.data = live_day_Город_индекс
+    parts = callback.data.split("_", 2)  # ['live', 'day', 'Город_индекс']
+    tail = parts[2]
+    # Разбиваем хвост на город и индекс
+    # Город не содержит "_", поэтому разделяем по последнему "_"
+    city, idx_str = tail.rsplit("_", 1)
+    day_index = int(idx_str)
+    groups = get_live_groups_for_day(city, day_index)
+    text = f"📅 <b>Живые группы в {escape_html(city)} на {DAYS[day_index]}:</b>\n\n"
+    text += "\n".join(format_live_group(n, a, s, e) for n, a, s, e in groups) if groups else "В этот день групп нет."
+    await callback.message.edit_text(text, parse_mode="HTML",
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                                         [InlineKeyboardButton(text="← Назад", callback_data=f"live_choose_day_{city}")]
+                                     ]))
+    await callback.answer()
+
+# Возврат к выбору периода для города
 @dp.callback_query(F.data.startswith("live_back_period_"))
 async def back_to_period(callback: CallbackQuery):
     city = callback.data[len("live_back_period_"):]
@@ -526,26 +537,41 @@ async def back_to_period(callback: CallbackQuery):
     )
     await callback.answer()
 
-# --- Установка на день ---
+# --- Общие колбэки ---
+@dp.callback_query(F.data == "mode_online")
+async def back_to_online_menu(callback: CallbackQuery):
+    await callback.message.edit_text("🌐 <b>Онлайн-расписание ВДА</b>", parse_mode="HTML", reply_markup=online_menu_keyboard())
+    await callback.answer()
+
+# --- Установка через колбэк (на случай) ---
 @dp.callback_query(F.data == "slogan")
 async def show_slogan(callback: CallbackQuery):
     slogan = random.choice(SLOGANS_AND_AFFIRMATIONS)
+    await callback.message.edit_text(f"💫 <b>Установка на день:</b>\n\n<i>«{escape_html(slogan)}»</i>", parse_mode="HTML",
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                                         [InlineKeyboardButton(text="← Назад", callback_data="start")]
+                                     ]))
+    await callback.answer()
+
+@dp.callback_query(F.data == "start")
+async def go_start(callback: CallbackQuery):
     await callback.message.edit_text(
-        f"💫 <b>Установка на день:</b>\n\n<i>«{escape_html(slogan)}»</i>",
+        "🕊 <b>Добро пожаловать в бот ВДА!</b>",
         parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[back_to_main_button()]])
+        reply_markup=reply_main_menu
     )
     await callback.answer()
 
+# Команды
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
     await message.answer(
         "ℹ️ <b>О боте</b>\n\n"
-        "Бот показывает расписание групп ВДА: онлайн и живые встречи.\n"
-        "Для навигации используйте кнопки меню.\n"
-        "/start — главное меню\n"
-        "/help — эта справка\n"
-        "/slogan — установка на день",
+        "Используйте кнопки:\n"
+        "🌐 Онлайн — расписание онлайн-групп\n"
+        "🏙 Живые — очные собрания по городам\n"
+        "💫 Установка — случайная аффирмация\n\n"
+        "Команды: /start, /help, /slogan",
         parse_mode="HTML",
         reply_markup=reply_main_menu
     )
