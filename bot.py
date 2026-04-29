@@ -572,10 +572,7 @@ async def back_to_period(callback: CallbackQuery):
 async def live_search_city_start(callback: CallbackQuery, state: FSMContext):
     await state.set_state(LiveGroupSearch.waiting_for_city)
     await callback.message.edit_text(
-        "🔍 Введите название вашего города:
-
-"
-        "<i>Например: Томск, Пермь, Владивосток...</i>",
+        "🔍 Введите название вашего города:\n\n<i>Например: Томск, Пермь, Владивосток...</i>",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="← Назад", callback_data="mode_live")]
@@ -592,7 +589,6 @@ async def live_search_city_handle(message: Message, state: FSMContext):
     query = message.text.strip()
     query_lower = query.lower()
 
-    # Ищем подстроку в названиях городов LIVE_GROUPS
     matched_cities = []
     seen = set()
     for g in LIVE_GROUPS:
@@ -605,13 +601,8 @@ async def live_search_city_handle(message: Message, state: FSMContext):
 
     if not matched_cities:
         await message.answer(
-            f"😔 Город <b>«{escape_html(query)}»</b> не найден в расписании живых групп.
-
-"
-            "Возможно, в вашем городе пока нет очных собраний ВДА, "
-            "или они ещё не добавлены в базу.
-
-"
+            f"\U0001f614 Город <b>«{escape_html(query)}»</b> не найден в расписании живых групп.\n\n"
+            "Возможно, в вашем городе пока нет очных собраний ВДА, или они ещё не добавлены в базу.\n\n"
             "Попробуйте поискать <b>онлайн-группы</b> — они доступны из любого города 🌐",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -622,23 +613,20 @@ async def live_search_city_handle(message: Message, state: FSMContext):
         return
 
     if len(matched_cities) == 1:
-        # Один город — сразу к выбору периода
         city = matched_cities[0]
         await message.answer(
-            f"🏙 Город: <b>{escape_html(city)}</b>
-Выберите период:",
+            f"\U0001f3d9 Город: <b>{escape_html(city)}</b>\nВыберите период:",
             parse_mode="HTML",
             reply_markup=live_period_keyboard(city)
         )
     else:
-        # Несколько совпадений — показываем уточняющие кнопки
         builder = InlineKeyboardBuilder()
-        for city in matched_cities[:20]:  # максимум 20
+        for city in matched_cities[:20]:
             builder.button(text=city, callback_data=f"live_city_{city}")
         builder.adjust(2)
         builder.row(InlineKeyboardButton(text="← Назад к городам", callback_data="mode_live"))
         await message.answer(
-            f"🔍 По запросу <b>«{escape_html(query)}»</b> найдено несколько городов. Уточните:",
+            f"\U0001f50d По запросу <b>«{escape_html(query)}»</b> найдено несколько городов. Уточните:",
             parse_mode="HTML",
             reply_markup=builder.as_markup()
         )
