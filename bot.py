@@ -140,7 +140,7 @@ def format_online_group(time_str: str, name: str, url: str) -> str:
 
 def format_online_group_with_sub(time_str: str, name: str, url: str, uid: str) -> str:
     data = get_user_sub(uid)
-    bell = " 🔔" if name in data.get("groups", {}) else ""
+    bell = " 🔔" if data.get("all_online") or name in data.get("groups", {}) else ""
     return f'🟠 <b>{time_str}</b> — <a href="{url}">{escape_html(name)}</a>{bell}'
 
 
@@ -154,7 +154,7 @@ def format_live_group(name: str, address: str, start: str, end: str, is_work_mee
 def format_live_group_with_sub(name: str, address: str, start: str, end: str, is_work_meeting: bool, uid: str) -> str:
     label = " 🔧" if is_work_meeting else ""
     data = get_user_sub(uid)
-    bell = " 🔔" if name in data.get("groups", {}) else ""
+    bell = " 🔔" if data.get("all_live") or name in data.get("groups", {}) else ""
     return f"• <b>{escape_html(name)}</b>{label}{bell} — {escape_html(address)} ({start}–{end})"
 
 
@@ -501,12 +501,21 @@ def get_online_full():
     return "\n\n".join(parts) if parts else "Онлайн-групп нет."
 
 
+# ==================== ПОДПИСКИ HELPERS ====================
+def is_user_subscribed_to_online(user_data: dict, group_name: str) -> bool:
+    return user_data.get("all_online", False) or group_name in user_data.get("groups", {})
+
+
+def is_user_subscribed_to_live(user_data: dict, group_name: str) -> bool:
+    return user_data.get("all_live", False) or group_name in user_data.get("groups", {})
+
+
 # ==================== УВЕДОМЛЕНИЯ ====================
 def get_today_online_subscriptions(user_data: dict):
     day_index = moscow_now().weekday()
     groups = []
     for time_str, name, url in get_online_by_day(day_index):
-        if name in user_data.get("groups", {}) and user_data["groups"][name].get("type") == "online":
+        if is_user_subscribed_to_online(user_data, name):
             groups.append((time_str, name, url))
     return groups
 
@@ -519,7 +528,7 @@ def get_today_live_subscriptions(user_data: dict):
     day_index = moscow_now().weekday()
     groups = []
     for name, address, start, end, is_work_meeting in get_live_groups_for_day(city, day_index):
-        if name in user_data.get("groups", {}) and user_data["groups"][name].get("type") == "live":
+        if is_user_subscribed_to_live(user_data, name):
             groups.append((name, address, start, end, is_work_meeting))
     return groups
 
@@ -557,7 +566,7 @@ def collect_due_reminders(user_data: dict, now_dt: datetime):
     reminders_meta = user_data.setdefault("meta", {}).setdefault("last_reminders", {})
 
     for time_str, name, url in get_online_by_day(now_dt.weekday()):
-        if name not in groups or groups[name].get("type") != "online":
+        if not is_user_subscribed_to_online(user_data, name):
             continue
         start_minutes = time_to_minutes(time_str)
         if start_minutes - now_minutes == 60:
@@ -574,7 +583,7 @@ def collect_due_reminders(user_data: dict, now_dt: datetime):
     city = user_data.get("city")
     if city:
         for name, address, start, end, is_work_meeting in get_live_groups_for_day(city, now_dt.weekday()):
-            if name not in groups or groups[name].get("type") != "live":
+            if not is_user_subscribed_to_live(user_data, name):
                 continue
             start_minutes = time_to_minutes(start)
             if start_minutes - now_minutes == 60:
@@ -739,8 +748,11 @@ async def show_sub_online_list(callback: CallbackQuery):
     data = get_user_sub(uid)
     builder = InlineKeyboardBuilder()
 
+    all_online_prefix = "🔔" if data.get("all_online") else "🔕"
+    builder.row(InlineKeyboardButton(text=f"{all_online_prefix} Все онлайн", callback_data="sub_toggle_online_all"))
+
     for gid, name in sorted(ONLINE_GROUP_ID_TO_NAME.items(), key=lambda x: x[1]):
-        subbed = name in data.get("groups", {})
+        subbed = is_user_subscribed_to_online(data, name)
         prefix = "🔔" if subbed else "🔕"
         builder.row(InlineKeyboardButton(text=f"{prefix} {name}", callback_data=f"sub_toggle_online_{gid}"))
 
@@ -777,9 +789,12 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str):
     builder = InlineKeyboardBuilder()
 
     city_group_names = sorted({g["name"] for g in get_live_groups_for_city(city)})
+    all_live_prefix = "🔔" if data.get("all_live") else "🔕"
+    builder.row(InlineKeyboardButton(text=f"{all_live_prefix} Все живые в своём городе", callback_data="sub_toggle_live_all"))
+
     for name in city_group_names:
         gid = make_short_id("l", name)
-        subbed = name in data.get("groups", {})
+        subbed = is_user_subscribed_to_live(data, name)
         prefix = "🔔" if subbed else "🔕"
         builder.row(InlineKeyboardButton(text=f"{prefix} {name}", callback_data=f"sub_toggle_live_{gid}"))
 
@@ -908,6 +923,29 @@ async def sub_live_city_selected(callback: CallbackQuery):
     await show_sub_live_list(callback, city)
 
 
+@dp.callback_query(F.data == "sub_toggle_online_all")
+async def sub_toggle_online_all(callback: CallbackQuery):
+    uid = str(callback.from_user.id)
+    data = get_user_sub(uid)
+    data["all_online"] = not data.get("all_online", False)
+    set_user_sub(uid, data)
+
+    await safe_callback_answer(callback, f"{'Включили' if data['all_online'] else 'Выключили'} все онлайн")
+
+    if data["all_online"]:
+        await callback.message.answer(
+            "🔔 <b>Вы подписались на все онлайн-группы!</b>\n\n☀ Утром в 7:00 — расписание\n🔔 За час — напоминание",
+            parse_mode="HTML",
+        )
+    else:
+        await callback.message.answer(
+            "🔕 <b>Подписка на все онлайн-группы отключена</b>",
+            parse_mode="HTML",
+        )
+
+    await show_sub_online_list(callback)
+
+
 @dp.callback_query(F.data.startswith("sub_toggle_online_"))
 async def sub_toggle_online(callback: CallbackQuery):
     gid = callback.data[len("sub_toggle_online_"):]
@@ -952,6 +990,36 @@ async def sub_toggle_online(callback: CallbackQuery):
         )
 
     await show_sub_online_list(callback)
+
+
+@dp.callback_query(F.data == "sub_toggle_live_all")
+async def sub_toggle_live_all(callback: CallbackQuery):
+    uid = str(callback.from_user.id)
+    data = get_user_sub(uid)
+    city = data.get("city")
+
+    if not city:
+        await safe_callback_answer(callback, "Сначала выберите город")
+        await show_sub_live_city_selector(callback)
+        return
+
+    data["all_live"] = not data.get("all_live", False)
+    set_user_sub(uid, data)
+
+    await safe_callback_answer(callback, f"{'Включили' if data['all_live'] else 'Выключили'} все живые в {city}")
+
+    if data["all_live"]:
+        await callback.message.answer(
+            f"🔔 <b>Вы подписались на все живые группы в {escape_html(city)}!</b>\n\n☀ Утром в 7:00 — расписание\n🔔 За час — напоминание",
+            parse_mode="HTML",
+        )
+    else:
+        await callback.message.answer(
+            f"🔕 <b>Подписка на все живые группы в {escape_html(city)} отключена</b>",
+            parse_mode="HTML",
+        )
+
+    await show_sub_live_list(callback, city)
 
 
 @dp.callback_query(F.data.startswith("sub_toggle_live_"))
