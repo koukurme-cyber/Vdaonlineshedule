@@ -160,51 +160,81 @@ ONLINE_SCHEDULE = {
 DAYS = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
 
 # -------------------- Живые группы (из Excel) --------------------
-def parse_live_schedule(raw_lines):
+def parse_live_schedule(raw_lines: str):
     """
-    Преобразует список строк Excel в структуру:
-    [
-      { "city": "Санкт-Петербург", "name": "Невская", "address": "пер. Челиева, д. 10Б",
-        "days": [ (0, "20:20", "21:20"), ... ] }
-    ]
+    Принимает строки с разделителями-табуляциями (как в вашем файле).
+    Возвращает список групп.
     """
     groups = []
-    # Пропускаем заголовок и parse
     for line in raw_lines.strip().split("\n"):
-        if not line.strip() or line.startswith("| A"):
+        if not line.strip():
             continue
-        parts = [c.strip() for c in line.split("|")[1:-1]]
+        # Разделяем по символу табуляции
+        parts = [c.strip() for c in line.split("\t")]
         if len(parts) < 5:
             continue
         country, city, name, address, time_str = parts
         if country != "Россия":
             continue
-        # Извлекаем дни и время
+
         days = []
-        # Разбиваем по точке с запятой или переносу
-        entries = re.split(r";|\n", time_str)
+        # Чистим time_str от лишних кавычек, переносов
+        time_str = time_str.replace('"', '').replace('\n', ' ')
+        # Разбиваем на отдельные дни (по точке с запятой или слову " и ")
+        entries = re.split(r";|\n| и ", time_str)
         for entry in entries:
             entry = entry.strip()
             if not entry:
                 continue
-            # Ищем день недели и время
+
+            # Ищем день недели
             day_found = None
             for i, day_name in enumerate(DAYS):
-                if day_name.lower() in entry.lower():
+                # Проверяем вхождение сокращённых и полных имён
+                if day_name.lower() in entry.lower() or day_name[:3].lower() in entry.lower():
                     day_found = i
                     break
+
+            if day_found is None:
+                # Дополнительные сокращения
+                short_map = {
+                    "пн": 0, "пон": 0,
+                    "вт": 1, "вто": 1,
+                    "ср": 2, "сре": 2,
+                    "чт": 3, "чет": 3,
+                    "пт": 4, "пят": 4,
+                    "сб": 5, "суб": 5,
+                    "вс": 6, "вос": 6,
+                }
+                for key, idx in short_map.items():
+                    if key in entry.lower():
+                        day_found = idx
+                        break
+
             if day_found is None:
                 continue
-            # Ищем время: XX:XX - XX:XX или с "с ... до ..."
-            times = re.findall(r"(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})", entry)
+
+            # Ищем время: гибкий шаблон
+            # XX:XX - XX:XX, XX.XX - XX.XX, с XX-XX до XX-XX, с XX:XX до XX:XX, в XX.XX
+            times = re.findall(r"(\d{1,2}[.:]\d{2})\s*[-–]\s*(\d{1,2}[.:]\d{2})", entry)
             if not times:
-                # Может быть "с 19-00 до 20-30"
-                times = re.findall(r"с\s*(\d{1,2}[.:]\d{2})\s*до\s*(\d{1,2}[.:]\d{2})", entry)
+                times = re.findall(r"с\s*(\d{1,2}[.:\-]\d{2})\s*до\s*(\d{1,2}[.:\-]\d{2})", entry)
+            if not times:
+                # Одиночное время "в 20.00" – подставим продолжительность 1 час
+                single = re.findall(r"в\s*(\d{1,2}[.:]\d{2})", entry)
+                if single:
+                    start = single[0].replace(".", ":")
+                    h, m = start.split(":")
+                    end_h = int(h) + 1
+                    end = f"{end_h:02d}:{m}"
+                    times = [(start, end)]
+
             if times:
                 start, end = times[0]
                 start = start.replace(".", ":").replace("-", ":")
                 end = end.replace(".", ":").replace("-", ":")
                 days.append((day_found, start, end))
+
         if days:
             groups.append({
                 "city": city.strip(),
@@ -213,6 +243,7 @@ def parse_live_schedule(raw_lines):
                 "days": days
             })
     return groups
+
 
 # Вставляем сырые данные из файла (обрезано для примера, в реальном коде нужно вставить все строки)
 # Здесь приведу несколько строк для демонстрации, но в боевом коде надо вставить полный список
