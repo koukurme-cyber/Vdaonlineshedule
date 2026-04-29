@@ -405,14 +405,26 @@ async def cmd_start(message: Message):
 # Обработчики постоянных кнопок
 @dp.message(F.text == "🌐 Онлайн")
 async def btn_online(message: Message):
+    try:
+        await message.delete()
+    except Exception:
+        pass
     await message.answer("🌐 <b>Онлайн-расписание ВДА</b>", parse_mode="HTML", reply_markup=online_menu_keyboard())
 
 @dp.message(F.text == "🏙 Живые")
 async def btn_live(message: Message):
+    try:
+        await message.delete()
+    except Exception:
+        pass
     await message.answer("🏙 <b>Выберите город:</b>", parse_mode="HTML", reply_markup=live_city_keyboard())
 
 @dp.message(F.text == "💫 Установка")
 async def btn_slogan(message: Message):
+    try:
+        await message.delete()
+    except Exception:
+        pass
     slogan = random.choice(SLOGANS_AND_AFFIRMATIONS)
     await message.answer(f"💫 <b>Установка на день:</b>\n\n<i>«{escape_html(slogan)}»</i>", parse_mode="HTML")
 
@@ -565,6 +577,10 @@ async def cmd_slogan(message: Message):
 # ВАЖНО: должен быть зарегистрирован ПОСЛЕДНИМ!
 @dp.message()
 async def fallback_handler(message: Message, state: FSMContext):
+    try:
+        await message.delete()
+    except Exception:
+        pass
     current_state = await state.get_state()
     if current_state is not None:
         return  # не мешаем FSM-состояниям
