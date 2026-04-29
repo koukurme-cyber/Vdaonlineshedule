@@ -225,8 +225,26 @@ except FileNotFoundError:
 LIVE_GROUPS = parse_live_schedule(raw_excel)
 
 POPULAR_CITIES = [
-    "Москва", "Санкт-Петербург", "Казань", "Новосибирск", "Екатеринбург",
-    "Ростов-на-Дону", "Краснодар", "Самара", "Омск", "Челябинск"
+    "Москва",
+    "Санкт-Петербург",
+    "Ростов-на-Дону",
+    "Казань",
+    "Новосибирск",
+    "Екатеринбург",
+    "Самара",
+    "Нижний Новгород",
+    "Краснодар",
+    "Омск",
+    "Калининград",
+    "Воронеж",
+    "Челябинск",
+    "Красноярск",
+    "Уфа",
+    "Тюмень",
+    "Ижевск",
+    "Тольятти",
+    "Хабаровск",
+    "Иркутск"
 ]
 
 SLOGANS_AND_AFFIRMATIONS = [
@@ -337,6 +355,7 @@ def live_city_keyboard():
     for city in POPULAR_CITIES:
         builder.button(text=city, callback_data=f"live_city_{city}")
     builder.adjust(2)
+    builder.row(InlineKeyboardButton(text="🔍 Найти свой город", callback_data="live_search_city"))
     return builder.as_markup()
 
 def live_period_keyboard(city: str):
@@ -547,6 +566,82 @@ async def back_to_period(callback: CallbackQuery):
         reply_markup=live_period_keyboard(city)
     )
     await callback.answer()
+
+# Живые: поиск города текстом
+@dp.callback_query(F.data == "live_search_city")
+async def live_search_city_start(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(LiveGroupSearch.waiting_for_city)
+    await callback.message.edit_text(
+        "🔍 Введите название вашего города:
+
+"
+        "<i>Например: Томск, Пермь, Владивосток...</i>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="← Назад", callback_data="mode_live")]
+        ])
+    )
+    await callback.answer()
+
+@dp.message(StateFilter(LiveGroupSearch.waiting_for_city))
+async def live_search_city_handle(message: Message, state: FSMContext):
+    try:
+        await message.delete()
+    except Exception:
+        pass
+    query = message.text.strip()
+    query_lower = query.lower()
+
+    # Ищем подстроку в названиях городов LIVE_GROUPS
+    matched_cities = []
+    seen = set()
+    for g in LIVE_GROUPS:
+        city = g["city"]
+        if query_lower in city.lower() and city not in seen:
+            matched_cities.append(city)
+            seen.add(city)
+
+    await state.clear()
+
+    if not matched_cities:
+        await message.answer(
+            f"😔 Город <b>«{escape_html(query)}»</b> не найден в расписании живых групп.
+
+"
+            "Возможно, в вашем городе пока нет очных собраний ВДА, "
+            "или они ещё не добавлены в базу.
+
+"
+            "Попробуйте поискать <b>онлайн-группы</b> — они доступны из любого города 🌐",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🌐 Онлайн-группы", callback_data="mode_online")],
+                [InlineKeyboardButton(text="← Назад к городам", callback_data="mode_live")],
+            ])
+        )
+        return
+
+    if len(matched_cities) == 1:
+        # Один город — сразу к выбору периода
+        city = matched_cities[0]
+        await message.answer(
+            f"🏙 Город: <b>{escape_html(city)}</b>
+Выберите период:",
+            parse_mode="HTML",
+            reply_markup=live_period_keyboard(city)
+        )
+    else:
+        # Несколько совпадений — показываем уточняющие кнопки
+        builder = InlineKeyboardBuilder()
+        for city in matched_cities[:20]:  # максимум 20
+            builder.button(text=city, callback_data=f"live_city_{city}")
+        builder.adjust(2)
+        builder.row(InlineKeyboardButton(text="← Назад к городам", callback_data="mode_live"))
+        await message.answer(
+            f"🔍 По запросу <b>«{escape_html(query)}»</b> найдено несколько городов. Уточните:",
+            parse_mode="HTML",
+            reply_markup=builder.as_markup()
+        )
 
 # --- Общие колбэки ---
 @dp.callback_query(F.data == "mode_online")
