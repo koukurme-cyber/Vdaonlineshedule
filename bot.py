@@ -247,6 +247,23 @@ POPULAR_CITIES = [
     "Иркутск"
 ]
 
+# --- Реестр городов: city_id вместо полного названия в callback_data ---
+_CITY_REGISTRY: dict = {}  # id -> name
+_CITY_ID_MAP: dict = {}    # name -> id
+for _g in LIVE_GROUPS:
+    _c = _g["city"]
+    if _c not in _CITY_ID_MAP:
+        _cid = str(len(_CITY_ID_MAP))
+        _CITY_ID_MAP[_c] = _cid
+        _CITY_REGISTRY[_cid] = _c
+
+def city_to_id(city: str) -> str:
+    return _CITY_ID_MAP.get(city, city)
+
+def id_to_city(cid: str) -> str:
+    return _CITY_REGISTRY.get(cid, cid)
+
+
 SLOGANS_AND_AFFIRMATIONS = [
     "Программа простая, но не лёгкая",
     "Жизнь больше, чем просто выживание",
@@ -355,16 +372,16 @@ def online_menu_keyboard():
 def live_city_keyboard():
     builder = InlineKeyboardBuilder()
     for city in POPULAR_CITIES:
-        builder.button(text=city, callback_data=f"live_city_{city}")
+        builder.button(text=city, callback_data=f"live_city_{city_to_id(city)}")
     builder.adjust(2)
     builder.row(InlineKeyboardButton(text="🔍 Найти свой город", callback_data="live_search_city"))
     return builder.as_markup()
 
 def live_period_keyboard(city: str):
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="📅 Сегодня", callback_data=f"live_today_{city}"),
-                InlineKeyboardButton(text="📋 Вся неделя", callback_data=f"live_week_{city}"))
-    builder.row(InlineKeyboardButton(text="📆 Выбрать день", callback_data=f"live_choose_day_{city}"))
+    builder.row(InlineKeyboardButton(text="📅 Сегодня", callback_data=f"live_today_{city_to_id(city)}"),
+                InlineKeyboardButton(text="📋 Вся неделя", callback_data=f"live_week_{city_to_id(city)}"))
+    builder.row(InlineKeyboardButton(text="📆 Выбрать день", callback_data=f"live_choose_day_{city_to_id(city)}"))
     builder.row(InlineKeyboardButton(text="← Назад", callback_data="mode_live"))
     return builder.as_markup()
 
@@ -497,7 +514,7 @@ async def online_show_day(callback: CallbackQuery):
 # --- Живые группы ---
 @dp.callback_query(F.data.startswith("live_city_"))
 async def process_city_selection(callback: CallbackQuery):
-    city = callback.data[len("live_city_"):]
+    city = id_to_city(callback.data[len("live_city_"):])
     await callback.message.edit_text(
         f"🏙 Город: <b>{escape_html(city)}</b>\nВыберите период:",
         parse_mode="HTML",
@@ -513,7 +530,7 @@ async def back_to_live_cities(callback: CallbackQuery):
 # Живые: сегодня
 @dp.callback_query(F.data.startswith("live_today_"))
 async def live_today(callback: CallbackQuery):
-    city = callback.data[len("live_today_"):]
+    city = id_to_city(callback.data[len("live_today_"):])
     day_index = moscow_now().weekday()
     groups = get_live_groups_for_day(city, day_index)
     text = f"📅 <b>Живые группы в {escape_html(city)} на сегодня ({DAYS[day_index]}):</b>\n\n"
@@ -527,7 +544,7 @@ async def live_today(callback: CallbackQuery):
 # Живые: вся неделя
 @dp.callback_query(F.data.startswith("live_week_"))
 async def live_week(callback: CallbackQuery):
-    city = callback.data[len("live_week_"):]
+    city = id_to_city(callback.data[len("live_week_"):])
     text = get_live_week(city)
     await callback.message.edit_text(text, parse_mode="HTML",
                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -539,7 +556,7 @@ async def live_week(callback: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("live_period_"))
 async def live_period_back(callback: CallbackQuery):
-    city = callback.data[len("live_period_"):]
+    city = id_to_city(callback.data[len("live_period_"):])
     await callback.message.edit_text(
         f"🏙 Город: <b>{escape_html(city)}</b>\nВыберите период:",
         parse_mode="HTML",
@@ -549,23 +566,24 @@ async def live_period_back(callback: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("live_choose_day_"))
 async def live_choose_day(callback: CallbackQuery):
-    city = callback.data[len("live_choose_day_"):]
+    city = id_to_city(callback.data[len("live_choose_day_"):])
     await callback.message.edit_text(f"📆 Выберите день недели ({escape_html(city)}):",
-                                     reply_markup=get_days_keyboard(f"live_day_{city}_", back_callback=f"live_period_{city}"))
+                                     reply_markup=get_days_keyboard(f"live_day_{city_to_id(city)}_", back_callback=f"live_period_{city_to_id(city)}"))
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("live_day_"))
 async def live_show_day(callback: CallbackQuery):
     parts = callback.data.split("_", 2)
     tail = parts[2]
-    city, idx_str = tail.rsplit("_", 1)
+    cid, idx_str = tail.rsplit("_", 1)
+    city = id_to_city(cid)
     day_index = int(idx_str)
     groups = get_live_groups_for_day(city, day_index)
     text = f"📅 <b>Живые группы в {escape_html(city)} на {DAYS[day_index]}:</b>\n\n"
     text += "\n".join(format_live_group(n, a, s, e) for n, a, s, e in groups) if groups else "В этот день групп нет."
     await callback.message.edit_text(text, parse_mode="HTML",
                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                                         [InlineKeyboardButton(text="← Назад", callback_data=f"live_choose_day_{city}")]
+                                         [InlineKeyboardButton(text="← Назад", callback_data=f"live_choose_day_{city_to_id(city)}")]
                                      ]))
     await callback.answer()
 
@@ -635,7 +653,7 @@ async def live_search_city_handle(message: Message, state: FSMContext):
     else:
         builder = InlineKeyboardBuilder()
         for city in matched_cities[:20]:
-            builder.button(text=city, callback_data=f"live_city_{city}")
+            builder.button(text=city, callback_data=f"live_city_{city_to_id(city)}")
         builder.adjust(2)
         builder.row(InlineKeyboardButton(text="← Назад к городам", callback_data="mode_live"))
         await message.answer(
