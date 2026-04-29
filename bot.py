@@ -305,13 +305,15 @@ class LiveGroupSearch(StatesGroup):
     waiting_for_city = State()
 
 # ==================== КЛАВИАТУРЫ ====================
-# Постоянная Reply-клавиатура (четыре кнопки)
+
+# ✅ FIX 1: is_persistent=True — клавиатура не пропадает после очистки истории
 reply_main_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🌐 Онлайн"), KeyboardButton(text="🏙 Живые"), KeyboardButton(text="💫 Установка")],
         [KeyboardButton(text="🔄 Запустить бота")]
     ],
-    resize_keyboard=True
+    resize_keyboard=True,
+    is_persistent=True,  # ← ключевое изменение
 )
 
 def get_days_keyboard(prefix: str) -> InlineKeyboardMarkup:
@@ -565,6 +567,18 @@ async def cmd_help(message: Message):
 async def cmd_slogan(message: Message):
     slogan = random.choice(SLOGANS_AND_AFFIRMATIONS)
     await message.answer(f"💫 <b>Установка на день:</b>\n\n<i>«{escape_html(slogan)}»</i>", parse_mode="HTML")
+
+# ✅ FIX 2: Fallback-обработчик — восстанавливает клавиатуру при любом сообщении.
+# ВАЖНО: должен быть зарегистрирован ПОСЛЕДНИМ!
+@dp.message()
+async def fallback_handler(message: Message, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state is not None:
+        return  # не мешаем FSM-состояниям
+    await message.answer(
+        "Используйте кнопки меню 👇",
+        reply_markup=reply_main_menu
+    )
 
 # ==================== ЗАПУСК ====================
 async def main():
