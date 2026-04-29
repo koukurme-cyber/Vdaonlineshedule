@@ -27,7 +27,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 class LiveGroupSearch(StatesGroup):
     waiting_for_city = State()
 
-class SubCitySetup(StatesGroup):
+class SubCitySearch(StatesGroup):
     waiting_for_city = State()
 
 # ==================== ПОДПИСЧИКИ ====================
@@ -59,13 +59,7 @@ def remove_subscriber(uid: str):
     save_subscribers(subs)
 
 def toggle_group_sub(uid: str, group_type: str, group_name: str, group_info: dict = None):
-    """
-    group_type: "online" или "live"
-    group_name: название группы
-    group_info: доп. информация (ссылка/адрес)
-    """
     data = get_user_sub(uid)
-    key = f"{group_type}:{group_name}"
     
     if group_name in data["groups"]:
         del data["groups"][group_name]
@@ -80,14 +74,6 @@ def toggle_group_sub(uid: str, group_type: str, group_name: str, group_info: dic
     set_user_sub(uid, data)
     return added
 
-def get_subscribed_groups(uid: str) -> list:
-    """Возвращает список подписанных групп: [(type, name, info), ...]"""
-    data = get_user_sub(uid)
-    result = []
-    for name, gdata in data["groups"].items():
-        result.append((gdata["type"], name, gdata["info"]))
-    return result
-
 # ==================== КЛАВИАТУРЫ ====================
 reply_main_menu = ReplyKeyboardMarkup(
     keyboard=[
@@ -96,6 +82,11 @@ reply_main_menu = ReplyKeyboardMarkup(
     ],
     resize_keyboard=True,
     is_persistent=True,
+)
+
+reply_back_only = ReplyKeyboardMarkup(
+    keyboard=[[KeyboardButton(text="← Назад")]],
+    resize_keyboard=True,
 )
 
 # ==================== ВРЕМЯ ====================
@@ -235,7 +226,7 @@ ONLINE_SCHEDULE = {
 
 DAYS = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
 
-# --- Загрузка живых групп из внешнего файла ---
+# --- Загрузка живых групп ---
 def parse_live_schedule(raw_lines: str):
     groups = []
     for line in raw_lines.strip().split("\n"):
@@ -267,7 +258,6 @@ def parse_live_schedule(raw_lines: str):
                         break
             if day_found is None:
                 continue
-
             occurrence = None
             e = entry.lower()
             if "последн" in e:
@@ -280,9 +270,7 @@ def parse_live_schedule(raw_lines: str):
                 occurrence = 3
             elif "четверт" in e and "четверг" not in e:
                 occurrence = 4
-
             is_work_meeting = "рабоч" in e or "рабочка" in e
-
             times = re.findall(r"(\d{1,2}[.:]\d{2})\s*[-–]\s*(\d{1,2}[.:]\d{2})", entry)
             if not times:
                 times = re.findall(r"с\s*(\d{1,2}[.:\-]\d{2})\s*до\s*(\d{1,2}[.:\-]\d{2})", entry)
@@ -306,7 +294,6 @@ def parse_live_schedule(raw_lines: str):
                     "end": end,
                     "occurrence": occurrence,
                     "is_work_meeting": is_work_meeting,
-                    "raw": entry.strip(),
                 })
         if days:
             groups.append({
@@ -321,11 +308,11 @@ try:
     with open("live_groups.tsv", "r", encoding="utf-8") as f:
         raw_excel = f.read()
 except FileNotFoundError:
-    print("❌ Файл live_groups.tsv не найден. Живые группы не загружены.")
+    print("❌ Файл live_groups.tsv не найден.")
     raw_excel = ""
 LIVE_GROUPS = parse_live_schedule(raw_excel)
 
-# Строим реестр городов
+# Реестр городов
 city_to_id = {}
 id_to_city = {}
 city_id_counter = 0
@@ -360,14 +347,11 @@ SPB_SUBURBS = [
 def get_searchable_cities(query: str) -> list:
     query_lower = query.lower().strip()
     is_spb_search = query_lower in ("санкт-петербург", "спб", "питер", "петербург")
-    
     matched = []
     seen = set()
-    
     for g in LIVE_GROUPS:
         city = g["city"]
         city_lower = city.lower()
-        
         if query_lower in city_lower:
             if is_spb_search:
                 is_suburb = False
@@ -377,11 +361,9 @@ def get_searchable_cities(query: str) -> list:
                         break
                 if is_suburb:
                     continue
-            
             if city not in seen:
                 matched.append(city)
                 seen.add(city)
-    
     if not matched and not is_spb_search:
         for g in LIVE_GROUPS:
             for suburb in SPB_SUBURBS:
@@ -389,7 +371,6 @@ def get_searchable_cities(query: str) -> list:
                     if g["city"] not in seen:
                         matched.append(g["city"])
                         seen.add(g["city"])
-    
     return matched
 
 SLOGANS_AND_AFFIRMATIONS = [
@@ -442,23 +423,27 @@ SLOGANS_AND_AFFIRMATIONS = [
 def escape_html(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-def format_online_group(time: str, name: str, url: str, add_sub_button: bool = False, uid: str = None) -> str:
+def format_online_group(time: str, name: str, url: str) -> str:
     safe_name = escape_html(name)
-    line = f'🟠 <b>{time}</b> — <a href="{url}">{safe_name}</a>'
-    if add_sub_button and uid:
-        is_sub = name in get_user_sub(uid)["groups"]
-        emoji = "🔕" if is_sub else "🔔"
-        line += f"  {emoji}"
-    return line
+    return f'🟠 <b>{time}</b> — <a href="{url}">{safe_name}</a>'
 
-def format_live_group(name, address, start, end, is_work_meeting=False, add_sub_button=False, uid=None):
-    label = " 🔧 рабочее собрание" if is_work_meeting else ""
-    line = f"• <b>{escape_html(name)}</b>{label} — {escape_html(address)} ({start}–{end})"
-    if add_sub_button and uid:
-        is_sub = name in get_user_sub(uid)["groups"]
-        emoji = "🔕" if is_sub else "🔔"
-        line += f"  {emoji}"
-    return line
+def format_online_group_with_sub(time: str, name: str, url: str, uid: str) -> str:
+    safe_name = escape_html(name)
+    data = get_user_sub(uid)
+    is_sub = name in data.get("groups", {})
+    star = " ⭐" if is_sub else ""
+    return f'🟠 <b>{time}</b> — <a href="{url}">{safe_name}</a>{star}'
+
+def format_live_group(name, address, start, end, is_work_meeting=False):
+    label = " 🔧" if is_work_meeting else ""
+    return f"• <b>{escape_html(name)}</b>{label} — {escape_html(address)} ({start}–{end})"
+
+def format_live_group_with_sub(name, address, start, end, is_work_meeting, uid):
+    label = " 🔧" if is_work_meeting else ""
+    data = get_user_sub(uid)
+    is_sub = name in data.get("groups", {})
+    star = " ⭐" if is_sub else ""
+    return f"• <b>{escape_html(name)}</b>{label}{star} — {escape_html(address)} ({start}–{end})"
 
 def split_long_message(text: str, limit: int = 3800) -> List[str]:
     parts = []
@@ -573,11 +558,9 @@ def get_days_keyboard(prefix: str, back_callback: str = None) -> InlineKeyboardM
 
 # ==================== ФОНОВЫЕ ЗАДАЧИ ====================
 async def background_tasks(bot: Bot):
-    """Фоновая задача для утренней рассылки и напоминаний"""
     while True:
         now = moscow_now()
         subs = load_subscribers()
-        
         if not subs:
             await asyncio.sleep(60)
             continue
@@ -589,52 +572,37 @@ async def background_tasks(bot: Bot):
                 city = data.get("city")
                 all_online = data.get("all_online", False)
                 all_live = data.get("all_live", False)
-                specific_groups = data.get("groups", {})
+                specific = data.get("groups", {})
                 
-                text = f"☀️ <b>Доброе утро! Расписание на сегодня ({DAYS[now.weekday()]}):</b>\n\n"
-                has_content = False
+                text = f"☀️ <b>Доброе утро! Сегодня ({DAYS[now.weekday()]}):</b>\n\n"
+                has = False
                 
-                # Все онлайн
                 if all_online:
                     today_online = get_online_by_day(now.weekday())
                     if today_online:
                         text += "🌐 <b>Онлайн:</b>\n"
                         text += "\n".join(format_online_group(t, n, u) for t, n, u in today_online)
                         text += "\n\n"
-                        has_content = True
+                        has = True
                 
-                # Все живые
                 if all_live and city:
-                    live_groups = get_live_groups_for_day(city, now.weekday())
-                    if live_groups:
+                    live = get_live_groups_for_day(city, now.weekday())
+                    if live:
                         text += f"🏙 <b>Живые в {escape_html(city)}:</b>\n"
-                        text += "\n".join(format_live_group(n, a, s, e, w) for n, a, s, e, w in live_groups)
+                        text += "\n".join(format_live_group(n, a, s, e, w) for n, a, s, e, w in live)
                         text += "\n\n"
-                        has_content = True
+                        has = True
                 
-                # Конкретные группы
-                for gname, gdata in specific_groups.items():
-                    gtype = gdata["type"]
-                    info = gdata.get("info", {})
-                    
-                    if gtype == "online":
-                        for day_groups in ONLINE_SCHEDULE.values():
-                            for t, n, u in day_groups:
-                                if n == gname:
-                                    text += f"⭐ <b>{escape_html(n)}</b> 🌐\n"
-                                    text += f"🕐 {t}\n🔗 {u}\n\n"
-                                    has_content = True
-                    elif gtype == "live" and city:
-                        live_groups = get_live_groups_for_day(city, now.weekday())
-                        for n, a, s, e, w in live_groups:
-                            if n == gname:
-                                work_label = " 🔧" if w else ""
-                                text += f"⭐ <b>{escape_html(n)}{work_label}</b> 🏙\n"
-                                text += f"🕐 {s}–{e}\n📍 {escape_html(a)}\n\n"
-                                has_content = True
+                if specific:
+                    text += "⭐ <b>Избранные:</b>\n"
+                    for gname, gdata in specific.items():
+                        gtype = gdata["type"]
+                        emoji = "🌐" if gtype == "online" else "🏙"
+                        text += f"{emoji} {escape_html(gname)}\n"
+                    has = True
                 
-                if not has_content:
-                    text += "Сегодня нет групп по вашей подписке."
+                if not has:
+                    text += "Нет групп по вашей подписке."
                 
                 try:
                     await bot.send_message(uid, text, parse_mode="HTML", disable_web_page_preview=True)
@@ -642,29 +610,26 @@ async def background_tasks(bot: Bot):
                     pass
                 await asyncio.sleep(0.05)
         
-        # Напоминания за час
+        # Напоминания за час (только для избранных групп)
         if now.minute == 0:
             for uid_str, data in subs.items():
                 uid = int(uid_str)
-                specific_groups = data.get("groups", {})
-                
-                if not specific_groups:
+                specific = data.get("groups", {})
+                if not specific:
                     continue
                 
-                # Проверяем онлайн-группы
                 today_online = get_online_by_day(now.weekday())
                 for time_str, name, url in today_online:
-                    if name in specific_groups and specific_groups[name]["type"] == "online":
+                    if name in specific and specific[name]["type"] == "online":
                         h, m = map(int, time_str.split(":"))
                         group_time = now.replace(hour=h, minute=m, second=0, microsecond=0)
                         delta = group_time - now
-                        
                         if timedelta(hours=1) <= delta <= timedelta(hours=1, minutes=5):
                             try:
                                 await bot.send_message(
                                     uid,
                                     f"🔔 <b>Через час — {escape_html(name)}</b> 🌐\n"
-                                    f"🕐 Начало в {time_str} (МСК)\n"
+                                    f"🕐 {time_str} (МСК)\n"
                                     f"🔗 <a href='{url}'>Присоединиться</a>",
                                     parse_mode="HTML", disable_web_page_preview=True
                                 )
@@ -672,23 +637,21 @@ async def background_tasks(bot: Bot):
                                 pass
                             await asyncio.sleep(0.05)
                 
-                # Проверяем живые группы
                 city = data.get("city")
                 if city:
-                    live_groups = get_live_groups_for_day(city, now.weekday())
-                    for name, address, start, end, is_work in live_groups:
-                        if name in specific_groups and specific_groups[name]["type"] == "live":
+                    live = get_live_groups_for_day(city, now.weekday())
+                    for name, address, start, end, is_work in live:
+                        if name in specific and specific[name]["type"] == "live":
                             h, m = map(int, start.split(":"))
                             group_time = now.replace(hour=h, minute=m, second=0, microsecond=0)
                             delta = group_time - now
-                            
                             if timedelta(hours=1) <= delta <= timedelta(hours=1, minutes=5):
-                                work_label = " 🔧" if is_work else ""
+                                wlabel = " 🔧" if is_work else ""
                                 try:
                                     await bot.send_message(
                                         uid,
-                                        f"🔔 <b>Через час — {escape_html(name)}{work_label}</b> 🏙\n"
-                                        f"🕐 Начало в {start} (МСК)\n"
+                                        f"🔔 <b>Через час — {escape_html(name)}{wlabel}</b> 🏙\n"
+                                        f"🕐 {start} (МСК)\n"
                                         f"📍 {escape_html(address)}",
                                         parse_mode="HTML"
                                     )
@@ -701,11 +664,16 @@ async def background_tasks(bot: Bot):
 # ==================== ДИСПЕТЧЕР ====================
 dp = Dispatcher(storage=MemoryStorage())
 
+# --- Кнопка "Назад" ---
+@dp.message(F.text == "← Назад")
+async def btn_back(message: Message):
+    await message.answer("🕊 <b>Главное меню</b>", parse_mode="HTML", reply_markup=reply_main_menu)
+
+# --- Старт ---
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
-        "🕊 <b>Добро пожаловать в бот ВДА!</b>\n\n"
-        "Используйте кнопки ниже для навигации.",
+        "🕊 <b>Добро пожаловать в бот ВДА!</b>\n\nИспользуйте кнопки ниже.",
         parse_mode="HTML",
         reply_markup=reply_main_menu
     )
@@ -713,16 +681,19 @@ async def cmd_start(message: Message):
 # --- Основные кнопки ---
 @dp.message(F.text == "🌐 Онлайн")
 async def btn_online(message: Message):
-    await message.answer("🌐 <b>Онлайн-расписание ВДА</b>", parse_mode="HTML", reply_markup=online_menu_keyboard())
+    await message.answer("🌐 <b>Онлайн-расписание</b>", parse_mode="HTML", reply_markup=online_menu_keyboard())
+    await message.answer("← Назад — вернуться в меню", reply_markup=reply_back_only)
 
 @dp.message(F.text == "🏙 Живые")
 async def btn_live(message: Message):
     await message.answer("🏙 <b>Выберите город:</b>", parse_mode="HTML", reply_markup=live_city_keyboard())
+    await message.answer("← Назад — вернуться в меню", reply_markup=reply_back_only)
 
 @dp.message(F.text == "💫 Установка")
 async def btn_slogan(message: Message):
     slogan = random.choice(SLOGANS_AND_AFFIRMATIONS)
     await message.answer(f"💫 <b>Установка на день:</b>\n\n<i>«{escape_html(slogan)}»</i>", parse_mode="HTML")
+    await message.answer("← Назад — вернуться в меню", reply_markup=reply_back_only)
 
 # --- Подписка ---
 @dp.message(F.text == "🔔 Подписка")
@@ -731,30 +702,32 @@ async def btn_subscribe_menu(message: Message):
     data = get_user_sub(uid)
     
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(
-        text=f"🌐 Все онлайн {'✅' if data['all_online'] else '❌'}",
-        callback_data="sub_toggle_all_online"
-    ))
-    builder.row(InlineKeyboardButton(
-        text=f"🏙 Все живые в моём городе {'✅' if data['all_live'] else '❌'}",
-        callback_data="sub_toggle_all_live"
-    ))
-    builder.row(InlineKeyboardButton(
-        text="🏙 Выбрать город для подписки",
-        callback_data="sub_set_city"
-    ))
-    builder.row(InlineKeyboardButton(
-        text="⭐ Подписаться на конкретные группы",
-        callback_data="sub_specific_groups"
-    ))
     
+    # Онлайн (город не нужен)
+    on_text = "🌐 Все онлайн-группы"
+    if data["all_online"]:
+        on_text += " ✅"
+    builder.row(InlineKeyboardButton(text=on_text, callback_data="sub_toggle_all_online"))
+    
+    # Живые (нужен город)
     city = data.get("city")
-    city_text = f"Текущий город: {escape_html(city)}" if city else "Город не выбран"
+    if city:
+        live_text = f"🏙 Все живые в «{city}»"
+        if data["all_live"]:
+            live_text += " ✅"
+        builder.row(InlineKeyboardButton(text=live_text, callback_data="sub_toggle_all_live"))
+    else:
+        builder.row(InlineKeyboardButton(text="🏙 Выбрать город для живых", callback_data="sub_set_city"))
+    
+    # Конкретные группы
+    builder.row(InlineKeyboardButton(text="⭐ Конкретные группы", callback_data="sub_specific"))
+    
+    builder.row(InlineKeyboardButton(text="← Назад", callback_data="main_menu_back"))
+    
+    city_text = f"Город: {escape_html(city)}" if city else "Город не выбран"
     
     await message.answer(
-        f"🔔 <b>Настройка подписки</b>\n\n"
-        f"{city_text}\n\n"
-        f"Выберите, на что подписаться:",
+        f"🔔 <b>Подписка</b>\n\n{city_text}\n\nНажмите, чтобы включить/выключить:",
         parse_mode="HTML",
         reply_markup=builder.as_markup()
     )
@@ -765,7 +738,7 @@ async def toggle_all_online(callback: CallbackQuery):
     data = get_user_sub(uid)
     data["all_online"] = not data["all_online"]
     set_user_sub(uid, data)
-    await callback.answer(f"Онлайн: {'✅ Вкл' if data['all_online'] else '❌ Выкл'}")
+    await callback.answer(f"{'✅ Включено' if data['all_online'] else 'Выключено'}")
     await btn_subscribe_menu(callback.message)
 
 @dp.callback_query(F.data == "sub_toggle_all_live")
@@ -773,159 +746,166 @@ async def toggle_all_live(callback: CallbackQuery):
     uid = str(callback.from_user.id)
     data = get_user_sub(uid)
     if not data.get("city"):
-        await callback.answer("⚠️ Сначала выберите город!", show_alert=True)
+        await callback.answer("Сначала выберите город!", show_alert=True)
         return
     data["all_live"] = not data["all_live"]
     set_user_sub(uid, data)
-    await callback.answer(f"Живые: {'✅ Вкл' if data['all_live'] else '❌ Выкл'}")
+    await callback.answer(f"{'✅ Включено' if data['all_live'] else 'Выключено'}")
     await btn_subscribe_menu(callback.message)
 
 @dp.callback_query(F.data == "sub_set_city")
-async def sub_set_city(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(SubCitySetup.waiting_for_city)
-    await state.update_data(sub_mode=True, from_sub_menu=True)
+async def sub_set_city(callback: CallbackQuery):
+    # Показываем список городов
+    builder = InlineKeyboardBuilder()
+    for city in POPULAR_CITIES:
+        cid = city_to_id.get(city, city)
+        builder.button(text=city, callback_data=f"subcity_{cid}")
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text="🔍 Найти другой", callback_data="sub_city_search"))
+    builder.row(InlineKeyboardButton(text="← Назад", callback_data="sub_back_to_menu"))
+    
     await callback.message.edit_text(
-        "🔍 Введите название города для подписки на живые группы:",
+        "🏙 Выберите город для подписки на живые группы:",
+        reply_markup=builder.as_markup()
+    )
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("subcity_"))
+async def sub_city_selected(callback: CallbackQuery):
+    cid = callback.data[len("subcity_"):]
+    city = id_to_city.get(cid, cid)
+    uid = str(callback.from_user.id)
+    data = get_user_sub(uid)
+    data["city"] = city
+    set_user_sub(uid, data)
+    await callback.answer(f"Город: {city}")
+    await btn_subscribe_menu(callback.message)
+
+@dp.callback_query(F.data == "sub_city_search")
+async def sub_city_search(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(SubCitySearch.waiting_for_city)
+    await callback.message.edit_text(
+        "🔍 Введите название города:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="← Назад", callback_data="sub_menu_back")]
+            [InlineKeyboardButton(text="← Назад", callback_data="sub_set_city")]
         ])
     )
     await callback.answer()
 
-@dp.callback_query(F.data == "sub_specific_groups")
-async def sub_specific_groups(callback: CallbackQuery):
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🌐 Онлайн-группы", callback_data="sub_specific_online"))
-    builder.row(InlineKeyboardButton(text="🏙 Живые группы", callback_data="sub_specific_live"))
-    builder.row(InlineKeyboardButton(text="← Назад", callback_data="sub_menu_back"))
-    await callback.message.edit_text(
-        "⭐ <b>Подписка на конкретные группы</b>\n\nВыберите тип групп:",
-        parse_mode="HTML",
-        reply_markup=builder.as_markup()
-    )
-    await callback.answer()
-
-@dp.callback_query(F.data == "sub_menu_back")
-async def sub_menu_back(callback: CallbackQuery):
-    await callback.message.delete()
-    await btn_subscribe_menu(callback.message)
-    await callback.answer()
-
-@dp.callback_query(F.data == "sub_specific_online")
-async def sub_specific_online(callback: CallbackQuery):
-    uid = str(callback.from_user.id)
-    builder = InlineKeyboardBuilder()
-    
-    all_online_names = set()
-    for day_groups in ONLINE_SCHEDULE.values():
-        for _, name, _ in day_groups:
-            all_online_names.add(name)
-    
-    for name in sorted(all_online_names):
-        is_sub = name in get_user_sub(uid)["groups"]
-        emoji = "✅" if is_sub else "➕"
-        builder.row(InlineKeyboardButton(
-            text=f"{emoji} {name}",
-            callback_data=f"sub_group_online_{name}"
-        ))
-    
-    builder.row(InlineKeyboardButton(text="← Назад", callback_data="sub_specific_groups"))
-    
-    await callback.message.edit_text(
-        "⭐ <b>Онлайн-группы</b>\n\n"
-        "Нажмите на группу, чтобы подписаться/отписаться:",
-        parse_mode="HTML",
-        reply_markup=builder.as_markup()
-    )
-    await callback.answer()
-
-@dp.callback_query(F.data == "sub_specific_live")
-async def sub_specific_live(callback: CallbackQuery, state: FSMContext):
-    uid = str(callback.from_user.id)
-    data = get_user_sub(uid)
-    city = data.get("city")
-    
-    if not city:
-        await callback.answer("⚠️ Сначала выберите город в настройках подписки!", show_alert=True)
-        return
-    
-    city_groups = get_live_groups_for_city(city)
-    builder = InlineKeyboardBuilder()
-    
-    all_names = set()
-    for g in city_groups:
-        all_names.add(g["name"])
-    
-    for name in sorted(all_names):
-        is_sub = name in get_user_sub(uid)["groups"]
-        emoji = "✅" if is_sub else "➕"
-        builder.row(InlineKeyboardButton(
-            text=f"{emoji} {name}",
-            callback_data=f"sub_group_live_{name}"
-        ))
-    
-    builder.row(InlineKeyboardButton(text="← Назад", callback_data="sub_specific_groups"))
-    
-    await callback.message.edit_text(
-        f"⭐ <b>Живые группы в {escape_html(city)}</b>\n\n"
-        "Нажмите на группу, чтобы подписаться/отписаться:",
-        parse_mode="HTML",
-        reply_markup=builder.as_markup()
-    )
-    await callback.answer()
-
-@dp.callback_query(F.data.startswith("sub_group_"))
-async def toggle_specific_group(callback: CallbackQuery):
-    uid = str(callback.from_user.id)
-    parts = callback.data.split("_", 2)
-    group_type = parts[2]  # "online" или "live"
-    group_name = parts[3] if len(parts) > 3 else ""
-    
-    # Собираем имя группы (может содержать _)
-    full_name = callback.data[len(f"sub_group_{group_type}_"):]
-    
-    info = {}
-    if group_type == "online":
-        for day_groups in ONLINE_SCHEDULE.values():
-            for _, name, url in day_groups:
-                if name == full_name:
-                    info = {"url": url}
-    else:
-        for g in LIVE_GROUPS:
-            if g["name"] == full_name:
-                info = {"city": g["city"], "address": g["address"]}
-    
-    added = toggle_group_sub(uid, group_type, full_name, info)
-    
-    await callback.answer(f"{'✅ Подписаны' if added else '❌ Отписаны'} на {full_name}")
-    
-    # Обновляем текущее меню
-    if group_type == "online":
-        await sub_specific_online(callback)
-    else:
-        await sub_specific_live(callback)
-
-@dp.message(StateFilter(SubCitySetup.waiting_for_city))
+@dp.message(StateFilter(SubCitySearch.waiting_for_city))
 async def sub_city_input(message: Message, state: FSMContext):
     query = message.text.strip()
     matched = get_searchable_cities(query)
     await state.clear()
     
     if not matched:
-        await message.answer("Город не найден. Попробуйте ещё раз.")
+        await message.answer("Город не найден.")
         return
     
-    city = matched[0]  # Берем первый подходящий
+    city = matched[0]
     uid = str(message.from_user.id)
     data = get_user_sub(uid)
     data["city"] = city
     set_user_sub(uid, data)
+    await message.answer(f"✅ Город: <b>{escape_html(city)}</b>", parse_mode="HTML")
+
+@dp.callback_query(F.data == "sub_specific")
+async def sub_specific(callback: CallbackQuery):
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🌐 Онлайн-группы", callback_data="sub_spec_online"))
+    builder.row(InlineKeyboardButton(text="🏙 Живые группы (нужен город)", callback_data="sub_spec_live"))
+    builder.row(InlineKeyboardButton(text="← Назад", callback_data="sub_back_to_menu"))
+    await callback.message.edit_text("⭐ Выберите тип групп:", reply_markup=builder.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data == "sub_spec_online")
+async def sub_spec_online(callback: CallbackQuery):
+    uid = str(callback.from_user.id)
+    data = get_user_sub(uid)
+    builder = InlineKeyboardBuilder()
     
-    await message.answer(
-        f"✅ Город для подписки: <b>{escape_html(city)}</b>\n\n"
-        "Теперь вы можете подписаться на все живые группы в этом городе.",
-        parse_mode="HTML"
-    )
+    all_names = set()
+    for day_groups in ONLINE_SCHEDULE.values():
+        for _, name, _ in day_groups:
+            all_names.add(name)
+    
+    for name in sorted(all_names):
+        is_sub = name in data.get("groups", {})
+        prefix = "⭐" if is_sub else "➕"
+        # Используем || как разделитель
+        cb = f"subgrp_online_{name}"
+        builder.row(InlineKeyboardButton(text=f"{prefix} {name}", callback_data=cb))
+    
+    builder.row(InlineKeyboardButton(text="← Назад", callback_data="sub_specific"))
+    await callback.message.edit_text("🌐 Онлайн-группы (нажмите для подписки):", reply_markup=builder.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data == "sub_spec_live")
+async def sub_spec_live(callback: CallbackQuery):
+    uid = str(callback.from_user.id)
+    data = get_user_sub(uid)
+    city = data.get("city")
+    
+    if not city:
+        await callback.answer("Сначала выберите город в подписке!", show_alert=True)
+        return
+    
+    city_groups = get_live_groups_for_city(city)
+    builder = InlineKeyboardBuilder()
+    all_names = set()
+    for g in city_groups:
+        all_names.add(g["name"])
+    
+    for name in sorted(all_names):
+        is_sub = name in data.get("groups", {})
+        prefix = "⭐" if is_sub else "➕"
+        cb = f"subgrp_live_{name}"
+        builder.row(InlineKeyboardButton(text=f"{prefix} {name}", callback_data=cb))
+    
+    builder.row(InlineKeyboardButton(text="← Назад", callback_data="sub_specific"))
+    await callback.message.edit_text(f"🏙 Живые группы в {escape_html(city)}:", reply_markup=builder.as_markup())
+    await callback.answer()
+
+@dp.callback_query(F.data.startswith("subgrp_"))
+async def toggle_specific_group(callback: CallbackQuery):
+    uid = str(callback.from_user.id)
+    # Формат: subgrp_online_Название или subgrp_live_Название
+    parts = callback.data.split("_", 2)
+    group_type = parts[1]  # online или live
+    group_name = parts[2]
+    
+    info = {}
+    if group_type == "online":
+        for day_groups in ONLINE_SCHEDULE.values():
+            for _, name, url in day_groups:
+                if name == group_name:
+                    info = {"url": url}
+                    break
+    else:
+        for g in LIVE_GROUPS:
+            if g["name"] == group_name:
+                info = {"city": g["city"], "address": g["address"]}
+                break
+    
+    added = toggle_group_sub(uid, group_type, group_name, info)
+    await callback.answer(f"{'✅ Подписаны' if added else '🔕 Отписаны'}")
+    
+    # Обновляем текущее меню
+    if group_type == "online":
+        await sub_spec_online(callback)
+    else:
+        await sub_spec_live(callback)
+
+@dp.callback_query(F.data == "sub_back_to_menu")
+async def sub_back_to_menu(callback: CallbackQuery):
+    await callback.message.delete()
+    await btn_subscribe_menu(callback.message)
+    await callback.answer()
+
+@dp.callback_query(F.data == "main_menu_back")
+async def main_menu_back(callback: CallbackQuery):
+    await callback.message.delete()
+    await callback.answer()
 
 # --- Мои группы ---
 @dp.message(F.text == "⭐ Мои группы")
@@ -940,24 +920,24 @@ async def btn_my_groups(message: Message):
     if data["all_live"] and data.get("city"):
         text += f"🏙 Все живые в {escape_html(data['city'])}\n"
     
-    specific = data.get("groups", {})
-    if specific:
-        text += "\n<b>Конкретные группы:</b>\n"
-        for name, gdata in specific.items():
-            gtype = gdata["type"]
-            emoji = "🌐" if gtype == "online" else "🏙"
+    specifics = data.get("groups", {})
+    if specifics:
+        text += "\n<b>Конкретные:</b>\n"
+        for name, gdata in specifics.items():
+            emoji = "🌐" if gdata["type"] == "online" else "🏙"
             text += f"{emoji} {escape_html(name)}\n"
     
-    if not data["all_online"] and not data["all_live"] and not specific:
-        text += "У вас пока нет подписок.\nНажмите «🔔 Подписка», чтобы настроить."
+    if not data["all_online"] and not data["all_live"] and not specifics:
+        text += "Нет активных подписок.\nНажмите «🔔 Подписка»."
     
-    await message.answer(text, parse_mode="HTML")
+    await message.answer(text, parse_mode="HTML", reply_markup=reply_main_menu)
 
+# --- Отписка ---
 @dp.message(F.text == "🔕 Отписаться")
 async def btn_unsubscribe_all(message: Message):
     uid = str(message.from_user.id)
     remove_subscriber(uid)
-    await message.answer("🔕 Вы отписались от всех уведомлений.")
+    await message.answer("🔕 Вы отписались от всего.", reply_markup=reply_main_menu)
 
 # --- Онлайн-расписание ---
 @dp.callback_query(F.data == "online_today")
@@ -965,8 +945,8 @@ async def online_today(callback: CallbackQuery):
     day_index = moscow_now().weekday()
     groups = get_online_by_day(day_index)
     uid = str(callback.from_user.id)
-    text = f"📅 <b>Онлайн-группы на сегодня ({DAYS[day_index]}):</b>\n\n"
-    text += "\n".join(format_online_group(t, n, u, add_sub_button=True, uid=uid) for t, n, u in groups) if groups else "Сегодня групп нет."
+    text = f"📅 <b>Онлайн сегодня ({DAYS[day_index]}):</b>\n\n"
+    text += "\n".join(format_online_group_with_sub(t, n, u, uid) for t, n, u in groups) if groups else "Нет групп."
     await callback.message.edit_text(text, parse_mode="HTML", disable_web_page_preview=True,
                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                                          [InlineKeyboardButton(text="← Назад", callback_data="mode_online")]
@@ -979,18 +959,15 @@ async def online_full(callback: CallbackQuery):
     parts = split_long_message(full_text)
     await callback.message.edit_text("📋 Полное расписание:")
     for idx, part in enumerate(parts):
-        if idx == len(parts) - 1:
-            await callback.message.answer(part, parse_mode="HTML", disable_web_page_preview=True,
-                                          reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                                              [InlineKeyboardButton(text="← Назад", callback_data="mode_online")]
-                                          ]))
-        else:
-            await callback.message.answer(part, parse_mode="HTML", disable_web_page_preview=True)
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="← Назад", callback_data="mode_online")]
+        ]) if idx == len(parts) - 1 else None
+        await callback.message.answer(part, parse_mode="HTML", disable_web_page_preview=True, reply_markup=kb)
     await callback.answer()
 
 @dp.callback_query(F.data == "online_choose_day")
 async def online_choose_day(callback: CallbackQuery):
-    await callback.message.edit_text("📆 Выберите день недели:", reply_markup=get_days_keyboard("online_day_"))
+    await callback.message.edit_text("📆 Выберите день:", reply_markup=get_days_keyboard("online_day_"))
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("online_day_"))
@@ -998,8 +975,8 @@ async def online_show_day(callback: CallbackQuery):
     day_index = int(callback.data.split("_")[-1])
     groups = get_online_by_day(day_index)
     uid = str(callback.from_user.id)
-    text = f"📅 <b>Онлайн-группы на {DAYS[day_index]}:</b>\n\n"
-    text += "\n".join(format_online_group(t, n, u, add_sub_button=True, uid=uid) for t, n, u in groups) if groups else "В этот день групп нет."
+    text = f"📅 <b>Онлайн — {DAYS[day_index]}:</b>\n\n"
+    text += "\n".join(format_online_group_with_sub(t, n, u, uid) for t, n, u in groups) if groups else "Нет групп."
     await callback.message.edit_text(text, parse_mode="HTML", disable_web_page_preview=True,
                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                                          [InlineKeyboardButton(text="← Назад", callback_data="online_choose_day")]
@@ -1008,18 +985,18 @@ async def online_show_day(callback: CallbackQuery):
 
 # --- Живые группы ---
 @dp.callback_query(F.data.startswith("live_city_"))
-async def process_city_selection(callback: CallbackQuery):
+async def process_city(callback: CallbackQuery):
     cid = callback.data[len("live_city_"):]
     city = id_to_city.get(cid, cid)
     await callback.message.edit_text(
-        f"🏙 Город: <b>{escape_html(city)}</b>\nВыберите период:",
+        f"🏙 <b>{escape_html(city)}</b>\nВыберите:",
         parse_mode="HTML",
         reply_markup=live_period_keyboard(city)
     )
     await callback.answer()
 
 @dp.callback_query(F.data == "mode_live")
-async def back_to_live_cities(callback: CallbackQuery):
+async def back_to_live(callback: CallbackQuery):
     await callback.message.edit_text("🏙 <b>Выберите город:</b>", parse_mode="HTML", reply_markup=live_city_keyboard())
     await callback.answer()
 
@@ -1030,8 +1007,8 @@ async def live_today(callback: CallbackQuery):
     day_index = moscow_now().weekday()
     groups = get_live_groups_for_day(city, day_index)
     uid = str(callback.from_user.id)
-    text = f"📅 <b>Живые группы в {escape_html(city)} на сегодня ({DAYS[day_index]}):</b>\n\n"
-    text += "\n".join(format_live_group(n, a, s, e, w, add_sub_button=True, uid=uid) for n, a, s, e, w in groups) if groups else "Сегодня групп нет."
+    text = f"📅 <b>{escape_html(city)} сегодня ({DAYS[day_index]}):</b>\n\n"
+    text += "\n".join(format_live_group_with_sub(n, a, s, e, w, uid) for n, a, s, e, w in groups) if groups else "Нет групп."
     await callback.message.edit_text(text, parse_mode="HTML",
                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                                          [InlineKeyboardButton(text="← Назад", callback_data=f"live_period_{cid}")]
@@ -1054,7 +1031,7 @@ async def live_period_back(callback: CallbackQuery):
     cid = callback.data[len("live_period_"):]
     city = id_to_city.get(cid, cid)
     await callback.message.edit_text(
-        f"🏙 Город: <b>{escape_html(city)}</b>\nВыберите период:",
+        f"🏙 <b>{escape_html(city)}</b>\nВыберите:",
         parse_mode="HTML",
         reply_markup=live_period_keyboard(city)
     )
@@ -1064,7 +1041,7 @@ async def live_period_back(callback: CallbackQuery):
 async def live_choose_day(callback: CallbackQuery):
     cid = callback.data[len("live_choose_day_"):]
     city = id_to_city.get(cid, cid)
-    await callback.message.edit_text(f"📆 Выберите день недели ({escape_html(city)}):",
+    await callback.message.edit_text(f"📆 {escape_html(city)}:",
                                      reply_markup=get_days_keyboard(f"live_day_{cid}_", back_callback=f"live_period_{cid}"))
     await callback.answer()
 
@@ -1077,8 +1054,8 @@ async def live_show_day(callback: CallbackQuery):
     day_index = int(idx_str)
     groups = get_live_groups_for_day(city, day_index)
     uid = str(callback.from_user.id)
-    text = f"📅 <b>Живые группы в {escape_html(city)} на {DAYS[day_index]}:</b>\n\n"
-    text += "\n".join(format_live_group(n, a, s, e, w, add_sub_button=True, uid=uid) for n, a, s, e, w in groups) if groups else "В этот день групп нет."
+    text = f"📅 <b>{escape_html(city)} — {DAYS[day_index]}:</b>\n\n"
+    text += "\n".join(format_live_group_with_sub(n, a, s, e, w, uid) for n, a, s, e, w in groups) if groups else "Нет групп."
     await callback.message.edit_text(text, parse_mode="HTML",
                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                                          [InlineKeyboardButton(text="← Назад", callback_data=f"live_choose_day_{cid}")]
@@ -1088,10 +1065,8 @@ async def live_show_day(callback: CallbackQuery):
 @dp.callback_query(F.data == "live_search_city")
 async def live_search_city_start(callback: CallbackQuery, state: FSMContext):
     await state.set_state(LiveGroupSearch.waiting_for_city)
-    await state.update_data(sub_mode=False)
     await callback.message.edit_text(
-        "🔍 Введите название вашего города:\n\n<i>Например: Томск, Пермь, Владивосток...</i>",
-        parse_mode="HTML",
+        "🔍 Введите город:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="← Назад", callback_data="mode_live")]
         ])
@@ -1101,59 +1076,46 @@ async def live_search_city_start(callback: CallbackQuery, state: FSMContext):
 @dp.message(StateFilter(LiveGroupSearch.waiting_for_city))
 async def live_search_city_handle(message: Message, state: FSMContext):
     query = message.text.strip()
-    matched_cities = get_searchable_cities(query)
+    matched = get_searchable_cities(query)
     await state.clear()
     
-    if not matched_cities:
-        await message.answer(
-            f"😔 Город <b>«{escape_html(query)}»</b> не найден.\n\n"
-            "Попробуйте <b>онлайн-группы</b> — они доступны из любого города 🌐",
-            parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🌐 Онлайн-группы", callback_data="mode_online")],
-                [InlineKeyboardButton(text="← Назад к городам", callback_data="mode_live")],
-            ])
-        )
+    if not matched:
+        await message.answer("Город не найден.", reply_markup=reply_main_menu)
         return
     
-    if len(matched_cities) == 1:
-        city = matched_cities[0]
+    if len(matched) == 1:
+        city = matched[0]
         await message.answer(
-            f"🏙 Город: <b>{escape_html(city)}</b>\nВыберите период:",
+            f"🏙 <b>{escape_html(city)}</b>\nВыберите:",
             parse_mode="HTML",
             reply_markup=live_period_keyboard(city)
         )
     else:
         builder = InlineKeyboardBuilder()
-        for c in matched_cities[:20]:
+        for c in matched[:20]:
             cid = city_to_id.get(c, c)
             builder.button(text=c, callback_data=f"live_city_{cid}")
         builder.adjust(1)
-        builder.row(InlineKeyboardButton(text="← Назад к городам", callback_data="mode_live"))
-        await message.answer(
-            f"🔍 Найдено несколько городов. Уточните:",
-            parse_mode="HTML",
-            reply_markup=builder.as_markup()
-        )
+        builder.row(InlineKeyboardButton(text="← Назад", callback_data="mode_live"))
+        await message.answer("🔍 Уточните:", reply_markup=builder.as_markup())
 
-# --- Общие колбэки ---
+# --- Общие ---
 @dp.callback_query(F.data == "mode_online")
 async def back_to_online_menu(callback: CallbackQuery):
-    await callback.message.edit_text("🌐 <b>Онлайн-расписание ВДА</b>", parse_mode="HTML", reply_markup=online_menu_keyboard())
+    await callback.message.edit_text("🌐 <b>Онлайн-расписание</b>", parse_mode="HTML", reply_markup=online_menu_keyboard())
     await callback.answer()
 
-# Команды
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
     await message.answer(
-        "ℹ️ <b>О боте</b>\n\n"
-        "🌐 Онлайн — расписание онлайн-групп\n"
-        "🏙 Живые — очные собрания по городам\n"
-        "💫 Установка — случайная аффирмация\n"
-        "🔔 Подписка — настройка уведомлений\n"
-        "⭐ Мои группы — просмотр подписок\n"
-        "🔕 Отписаться — отключить уведомления\n\n"
-        "Команды: /start, /help, /slogan",
+        "ℹ️ <b>Бот ВДА</b>\n\n"
+        "🌐 Онлайн — онлайн-группы\n"
+        "🏙 Живые — очные собрания\n"
+        "💫 Установка — аффирмация\n"
+        "🔔 Подписка — уведомления\n"
+        "⭐ Мои группы — подписки\n"
+        "🔕 Отписаться — отключить\n\n"
+        "/start /help /slogan",
         parse_mode="HTML",
         reply_markup=reply_main_menu
     )
@@ -1161,10 +1123,10 @@ async def cmd_help(message: Message):
 @dp.message(Command("slogan"))
 async def cmd_slogan(message: Message):
     slogan = random.choice(SLOGANS_AND_AFFIRMATIONS)
-    await message.answer(f"💫 <b>Установка на день:</b>\n\n<i>«{escape_html(slogan)}»</i>", parse_mode="HTML")
+    await message.answer(f"💫 <b>Установка:</b>\n\n<i>«{escape_html(slogan)}»</i>", parse_mode="HTML")
 
 @dp.message()
-async def fallback_handler(message: Message, state: FSMContext):
+async def fallback(message: Message, state: FSMContext):
     current_state = await state.get_state()
     if current_state is not None:
         return
@@ -1176,11 +1138,8 @@ async def main():
         print("❌ BOT_TOKEN не задан")
         return
     bot = Bot(token=BOT_TOKEN)
-
-    # Запускаем фоновую задачу для уведомлений
     asyncio.create_task(background_tasks(bot))
-
-    print("✅ Бот запущен с полной системой подписок")
+    print("✅ Бот запущен")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
