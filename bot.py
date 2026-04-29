@@ -196,6 +196,8 @@ def parse_live_schedule(raw_lines: str):
                 times = re.findall(r"с\s*(\d{1,2}[.:\-]\d{2})\s*до\s*(\d{1,2}[.:\-]\d{2})", entry)
             if not times:
                 single = re.findall(r"в\s*(\d{1,2}[.:]\d{2})", entry)
+                if not single:
+                    single = re.findall(r"(?<!\d)(\d{1,2}[.:]\d{2})(?!\d)", entry)
                 if single:
                     start = single[0].replace(".", ":")
                     h, m = start.split(":")
