@@ -415,6 +415,45 @@ def get_live_week(city: str):
 # ==================== ДИСПЕТЧЕР ====================
 dp = Dispatcher(storage=MemoryStorage())
 
+def online_menu_keyboard():
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="📅 Сегодня", callback_data="online_today"),
+                InlineKeyboardButton(text="📋 Полное", callback_data="online_full"))
+    builder.row(InlineKeyboardButton(text="📆 Выбрать день", callback_data="online_choose_day"))
+    return builder.as_markup()
+
+# --- Живые ---
+
+def live_city_keyboard():
+    builder = InlineKeyboardBuilder()
+    for city in POPULAR_CITIES:
+        builder.button(text=city, callback_data=f"live_city_{city_to_id(city)}")
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text="🔍 Найти свой город", callback_data="live_search_city"))
+    return builder.as_markup()
+
+def live_period_keyboard(city: str):
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="📅 Сегодня", callback_data=f"live_today_{city_to_id(city)}"),
+                InlineKeyboardButton(text="📋 Вся неделя", callback_data=f"live_week_{city_to_id(city)}"))
+    builder.row(InlineKeyboardButton(text="📆 Выбрать день", callback_data=f"live_choose_day_{city_to_id(city)}"))
+    builder.row(InlineKeyboardButton(text="← Назад", callback_data="mode_live"))
+    return builder.as_markup()
+
+# ==================== БИЗНЕС-ЛОГИКА ====================
+
+def get_days_keyboard(prefix: str, back_callback: str = None) -> InlineKeyboardMarkup:
+    """Универсальная клавиатура выбора дня недели."""
+    builder = InlineKeyboardBuilder()
+    for i, day_name in enumerate(DAYS):
+        builder.button(text=day_name, callback_data=f"{prefix}{i}")
+    builder.adjust(2)
+    if back_callback:
+        builder.row(InlineKeyboardButton(text="← Назад", callback_data=back_callback))
+    return builder.as_markup()
+
+# --- Онлайн ---
+
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
