@@ -82,11 +82,6 @@ reply_main_menu = ReplyKeyboardMarkup(
     is_persistent=True,
 )
 
-reply_back_only = ReplyKeyboardMarkup(
-    keyboard=[[KeyboardButton(text="← Назад")]],
-    resize_keyboard=True,
-)
-
 # ==================== ВРЕМЯ ====================
 def moscow_now():
     return datetime.utcnow() + timedelta(hours=3)
@@ -429,19 +424,19 @@ def format_online_group_with_sub(time: str, name: str, url: str, uid: str) -> st
     safe_name = escape_html(name)
     data = get_user_sub(uid)
     is_sub = name in data.get("groups", {})
-    sub_line = "\n   🔔 <i>вы подписаны</i>" if is_sub else ""
-    return f'🟠 <b>{time}</b> — <a href="{url}">{safe_name}</a>{sub_line}'
+    bell = " 🔔" if is_sub else ""
+    return f'🟠 <b>{time}</b> — <a href="{url}">{safe_name}</a>{bell}'
 
 def format_live_group(name, address, start, end, is_work_meeting=False):
-    label = " 🔧 рабочее собрание" if is_work_meeting else ""
+    label = " 🔧" if is_work_meeting else ""
     return f"• <b>{escape_html(name)}</b>{label} — {escape_html(address)} ({start}–{end})"
 
 def format_live_group_with_sub(name, address, start, end, is_work_meeting, uid):
-    label = " 🔧 рабочее собрание" if is_work_meeting else ""
+    label = " 🔧" if is_work_meeting else ""
     data = get_user_sub(uid)
     is_sub = name in data.get("groups", {})
-    sub_line = "\n   🔔 <i>вы подписаны</i>" if is_sub else ""
-    return f"• <b>{escape_html(name)}</b>{label} — {escape_html(address)} ({start}–{end}){sub_line}"
+    bell = " 🔔" if is_sub else ""
+    return f"• <b>{escape_html(name)}</b>{label}{bell} — {escape_html(address)} ({start}–{end})"
 
 def split_long_message(text: str, limit: int = 3800) -> List[str]:
     parts = []
@@ -474,7 +469,10 @@ def day_entry_matches_date(day_entry, target_date):
 
 def get_live_groups_for_city(city: str):
     city_lower = city.lower().strip()
-    return [g for g in LIVE_GROUPS if g["city"].lower() == city_lower]
+    return [
+        g for g in LIVE_GROUPS
+        if city_lower in g["city"].lower()
+    ]
 
 def get_live_groups_for_day(city: str, day_index: int):
     city_groups = get_live_groups_for_city(city)
@@ -660,10 +658,6 @@ async def background_tasks(bot: Bot):
 # ==================== ДИСПЕТЧЕР ====================
 dp = Dispatcher(storage=MemoryStorage())
 
-@dp.message(F.text == "← Назад")
-async def btn_back(message: Message):
-    await message.answer("🕊 <b>Главное меню</b>", parse_mode="HTML", reply_markup=reply_main_menu)
-
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
@@ -675,18 +669,15 @@ async def cmd_start(message: Message):
 @dp.message(F.text == "🌐 Онлайн")
 async def btn_online(message: Message):
     await message.answer("🌐 <b>Онлайн-расписание</b>", parse_mode="HTML", reply_markup=online_menu_keyboard())
-    await message.answer("← Назад — вернуться в меню", reply_markup=reply_back_only)
 
 @dp.message(F.text == "🏙 Живые")
 async def btn_live(message: Message):
     await message.answer("🏙 <b>Выберите город:</b>", parse_mode="HTML", reply_markup=live_city_keyboard())
-    await message.answer("← Назад — вернуться в меню", reply_markup=reply_back_only)
 
 @dp.message(F.text == "💫 Установка")
 async def btn_slogan(message: Message):
     slogan = random.choice(SLOGANS_AND_AFFIRMATIONS)
     await message.answer(f"💫 <b>Установка на день:</b>\n\n<i>«{escape_html(slogan)}»</i>", parse_mode="HTML")
-    await message.answer("← Назад — вернуться в меню", reply_markup=reply_back_only)
 
 # --- Подписка ---
 @dp.message(F.text == "🔔 Подписка")
@@ -804,8 +795,8 @@ async def sub_city_selected(callback: CallbackQuery):
     data = get_user_sub(uid)
     data["city"] = city
     set_user_sub(uid, data)
-    await callback.message.answer(f"✅ Город для подписки: <b>{escape_html(city)}</b>", parse_mode="HTML")
     await btn_subscribe_menu(callback.message)
+    await callback.answer(f"✅ Город: {city}")
 
 @dp.callback_query(F.data == "sub_city_search")
 async def sub_city_search(callback: CallbackQuery, state: FSMContext):
@@ -834,6 +825,7 @@ async def sub_city_input(message: Message, state: FSMContext):
     data["city"] = city
     set_user_sub(uid, data)
     await message.answer(f"✅ Город для подписки: <b>{escape_html(city)}</b>", parse_mode="HTML")
+    await btn_subscribe_menu(message)
 
 @dp.callback_query(F.data == "sub_specific")
 async def sub_specific(callback: CallbackQuery):
