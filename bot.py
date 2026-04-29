@@ -191,6 +191,24 @@ def parse_live_schedule(raw_lines: str):
                         break
             if day_found is None:
                 continue
+
+            occurrence = None
+            e = entry.lower()
+            if "последн" in e:
+                occurrence = "last"
+            elif "перв" in e:
+                occurrence = 1
+            elif "втор" in e:
+                occurrence = 2
+            elif "треть" in e:
+                occurrence = 3
+            elif "четверт" in e:
+                occurrence = 4
+            elif "пят" in e and "пятниц" not in e:
+                occurrence = 5
+
+            is_work_meeting = "рабоч" in e or "рабочка" in e
+
             times = re.findall(r"(\d{1,2}[.:]\d{2})\s*[-–]\s*(\d{1,2}[.:]\d{2})", entry)
             if not times:
                 times = re.findall(r"с\s*(\d{1,2}[.:\-]\d{2})\s*до\s*(\d{1,2}[.:\-]\d{2})", entry)
@@ -208,7 +226,14 @@ def parse_live_schedule(raw_lines: str):
                 start, end = times[0]
                 start = start.replace(".", ":").replace("-", ":")
                 end = end.replace(".", ":").replace("-", ":")
-                days.append((day_found, start, end))
+                days.append({
+                    "day": day_found,
+                    "start": start,
+                    "end": end,
+                    "occurrence": occurrence,
+                    "is_work_meeting": is_work_meeting,
+                    "raw": entry.strip(),
+                })
         if days:
             groups.append({
                 "city": city.strip(),
@@ -320,86 +345,26 @@ def format_online_group(time: str, name: str, url: str) -> str:
     safe_name = escape_html(name)
     return f'🟠 <b>{time}</b> — <a href="{url}">{safe_name}</a>'
 
-def format_live_group(name: str, address: str, time_start: str, time_end: str) -> str:
-    safe_name = escape_html(name)
-    safe_addr = escape_html(address)
-    return f'📍 <b>{time_start}-{time_end}</b> — {safe_name}\n   {safe_addr}'
+def week_of_month(dt):
+    return ((dt.day - 1) // 7) + 1
 
-def split_long_message(text: str, limit: int = 3800) -> List[str]:
-    parts = []
-    while len(text) > limit:
-        cut = text.rfind("\n", 0, limit)
-        if cut == -1:
-            cut = limit
-        parts.append(text[:cut].strip())
-        text = text[cut:].lstrip("\n")
-    if text.strip():
-        parts.append(text.strip())
-    return parts
+def is_last_weekday_of_month(dt):
+    next_same = dt + timedelta(days=7)
+    return next_same.month != dt.month
 
-# ==================== FSM ====================
-class LiveGroupSearch(StatesGroup):
-    waiting_for_city = State()
+def day_entry_matches_date(day_entry, target_date):
+    if day_entry["day"] != target_date.weekday():
+        return False
+    occurrence = day_entry.get("occurrence")
+    if occurrence is None:
+        return True
+    if occurrence == "last":
+        return is_last_weekday_of_month(target_date)
+    return week_of_month(target_date) == occurrence
 
-# ==================== КЛАВИАТУРЫ ====================
-
-# ✅ FIX 1: is_persistent=True — клавиатура не пропадает после очистки истории
-reply_main_menu = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="🌐 Онлайн"), KeyboardButton(text="🏙 Живые"), KeyboardButton(text="💫 Установка")],
-    ],
-    resize_keyboard=True,
-    is_persistent=True,
-)
-
-def get_days_keyboard(prefix: str, back_callback: str = None) -> InlineKeyboardMarkup:
-    """Универсальная клавиатура выбора дня недели."""
-    builder = InlineKeyboardBuilder()
-    for i, day_name in enumerate(DAYS):
-        builder.button(text=day_name, callback_data=f"{prefix}{i}")
-    builder.adjust(2)
-    if back_callback:
-        builder.row(InlineKeyboardButton(text="← Назад", callback_data=back_callback))
-    return builder.as_markup()
-
-# --- Онлайн ---
-def online_menu_keyboard():
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="📅 Сегодня", callback_data="online_today"),
-                InlineKeyboardButton(text="📋 Полное", callback_data="online_full"))
-    builder.row(InlineKeyboardButton(text="📆 Выбрать день", callback_data="online_choose_day"))
-    return builder.as_markup()
-
-# --- Живые ---
-def live_city_keyboard():
-    builder = InlineKeyboardBuilder()
-    for city in POPULAR_CITIES:
-        builder.button(text=city, callback_data=f"live_city_{city_to_id(city)}")
-    builder.adjust(2)
-    builder.row(InlineKeyboardButton(text="🔍 Найти свой город", callback_data="live_search_city"))
-    return builder.as_markup()
-
-def live_period_keyboard(city: str):
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="📅 Сегодня", callback_data=f"live_today_{city_to_id(city)}"),
-                InlineKeyboardButton(text="📋 Вся неделя", callback_data=f"live_week_{city_to_id(city)}"))
-    builder.row(InlineKeyboardButton(text="📆 Выбрать день", callback_data=f"live_choose_day_{city_to_id(city)}"))
-    builder.row(InlineKeyboardButton(text="← Назад", callback_data="mode_live"))
-    return builder.as_markup()
-
-# ==================== БИЗНЕС-ЛОГИКА ====================
-def get_online_by_day(day_index: int):
-    return sorted(ONLINE_SCHEDULE.get(day_index, []), key=lambda x: x[0])
-
-def get_online_full():
-    parts = []
-    for i, day_name in enumerate(DAYS):
-        groups = get_online_by_day(i)
-        if groups:
-            lines = [f"<b>{day_name}:</b>"]
-            lines.extend(format_online_group(t, n, u) for t, n, u in groups)
-            parts.append("\n".join(lines))
-    return "\n\n".join(parts) if parts else "Онлайн-групп нет."
+def format_live_group(name, address, start, end, is_work_meeting=False):
+    label = " 🔧 рабочее собрание" if is_work_meeting else ""
+    return f"• <b>{escape_html(name)}</b>{label} — {escape_html(address)} ({start}–{end})"
 
 def get_live_groups_for_city(city: str):
     city_lower = city.lower().strip()
@@ -408,10 +373,12 @@ def get_live_groups_for_city(city: str):
 def get_live_groups_for_day(city: str, day_index: int):
     city_groups = get_live_groups_for_city(city)
     result = []
+    today = moscow_now().date()
+    target_date = today + timedelta(days=(day_index - today.weekday()) % 7)
     for g in city_groups:
-        for d, start, end in g["days"]:
-            if d == day_index:
-                result.append((g["name"], g["address"], start, end))
+        for entry in g["days"]:
+            if day_entry_matches_date(entry, target_date):
+                result.append((g["name"], g["address"], entry["start"], entry["end"], entry.get("is_work_meeting", False)))
     return sorted(result, key=lambda x: x[2])
 
 def get_live_week(city: str):
@@ -419,15 +386,18 @@ def get_live_week(city: str):
     if not city_groups:
         return f"В городе «{escape_html(city)}» живых групп не найдено."
     parts = [f"🏙 <b>Живые группы в {escape_html(city)}:</b>"]
-    for day_index, day_name in enumerate(DAYS):
+    today = moscow_now().date()
+    for offset in range(7):
+        target_date = today + timedelta(days=offset)
+        day_name = DAYS[target_date.weekday()]
         day_groups = []
         for g in city_groups:
-            for d, start, end in g["days"]:
-                if d == day_index:
-                    day_groups.append(format_live_group(g["name"], g["address"], start, end))
+            for entry in g["days"]:
+                if day_entry_matches_date(entry, target_date):
+                    day_groups.append((g["name"], g["address"], entry["start"], entry["end"], entry.get("is_work_meeting", False)))
         if day_groups:
-            parts.append(f"<b>{day_name}:</b>")
-            parts.extend(day_groups)
+            parts.append(f"<b>{day_name} ({target_date.strftime('%d.%m')}):</b>")
+            parts.extend(format_live_group(n, a, s, e, w) for n, a, s, e, w in sorted(day_groups, key=lambda x: x[2]))
     return "\n".join(parts)
 
 # ==================== ДИСПЕТЧЕР ====================
@@ -536,7 +506,7 @@ async def live_today(callback: CallbackQuery):
     day_index = moscow_now().weekday()
     groups = get_live_groups_for_day(city, day_index)
     text = f"📅 <b>Живые группы в {escape_html(city)} на сегодня ({DAYS[day_index]}):</b>\n\n"
-    text += "\n".join(format_live_group(n, a, s, e) for n, a, s, e in groups) if groups else "Сегодня групп нет."
+    text += "\n".join(format_live_group(n, a, s, e, w) for n, a, s, e, w in groups) if groups else "Сегодня групп нет."
     await callback.message.edit_text(text, parse_mode="HTML",
                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                                          [InlineKeyboardButton(text="← Назад", callback_data=f"live_period_{city_to_id(city)}")]
@@ -582,7 +552,7 @@ async def live_show_day(callback: CallbackQuery):
     day_index = int(idx_str)
     groups = get_live_groups_for_day(city, day_index)
     text = f"📅 <b>Живые группы в {escape_html(city)} на {DAYS[day_index]}:</b>\n\n"
-    text += "\n".join(format_live_group(n, a, s, e) for n, a, s, e in groups) if groups else "В этот день групп нет."
+    text += "\n".join(format_live_group(n, a, s, e, w) for n, a, s, e, w in groups) if groups else "В этот день групп нет."
     await callback.message.edit_text(text, parse_mode="HTML",
                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                                          [InlineKeyboardButton(text="← Назад", callback_data=f"live_choose_day_{city_to_id(city)}")]
