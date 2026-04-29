@@ -305,10 +305,11 @@ class LiveGroupSearch(StatesGroup):
     waiting_for_city = State()
 
 # ==================== КЛАВИАТУРЫ ====================
-# Постоянная Reply-клавиатура (три кнопки)
+# Постоянная Reply-клавиатура (четыре кнопки)
 reply_main_menu = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="🌐 Онлайн"), KeyboardButton(text="🏙 Живые"), KeyboardButton(text="💫 Установка")]
+        [KeyboardButton(text="🌐 Онлайн"), KeyboardButton(text="🏙 Живые"), KeyboardButton(text="💫 Установка")],
+        [KeyboardButton(text="🔄 Запустить бота")]
     ],
     resize_keyboard=True
 )
@@ -399,6 +400,11 @@ async def cmd_start(message: Message):
         parse_mode="HTML",
         reply_markup=reply_main_menu
     )
+
+# Обработчик кнопки "Запустить бота"
+@dp.message(F.text == "🔄 Запустить бота")
+async def restart_bot(message: Message):
+    await cmd_start(message)
 
 # Обработчики постоянных кнопок
 @dp.message(F.text == "🌐 Онлайн")
@@ -510,11 +516,8 @@ async def live_choose_day(callback: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("live_day_"))
 async def live_show_day(callback: CallbackQuery):
-    # callback.data = live_day_Город_индекс
-    parts = callback.data.split("_", 2)  # ['live', 'day', 'Город_индекс']
+    parts = callback.data.split("_", 2)
     tail = parts[2]
-    # Разбиваем хвост на город и индекс
-    # Город не содержит "_", поэтому разделяем по последнему "_"
     city, idx_str = tail.rsplit("_", 1)
     day_index = int(idx_str)
     groups = get_live_groups_for_day(city, day_index)
@@ -543,25 +546,6 @@ async def back_to_online_menu(callback: CallbackQuery):
     await callback.message.edit_text("🌐 <b>Онлайн-расписание ВДА</b>", parse_mode="HTML", reply_markup=online_menu_keyboard())
     await callback.answer()
 
-# --- Установка через колбэк (на случай) ---
-@dp.callback_query(F.data == "slogan")
-async def show_slogan(callback: CallbackQuery):
-    slogan = random.choice(SLOGANS_AND_AFFIRMATIONS)
-    await callback.message.edit_text(f"💫 <b>Установка на день:</b>\n\n<i>«{escape_html(slogan)}»</i>", parse_mode="HTML",
-                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                                         [InlineKeyboardButton(text="← Назад", callback_data="start")]
-                                     ]))
-    await callback.answer()
-
-@dp.callback_query(F.data == "start")
-async def go_start(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "🕊 <b>Добро пожаловать в бот ВДА!</b>",
-        parse_mode="HTML",
-        reply_markup=reply_main_menu
-    )
-    await callback.answer()
-
 # Команды
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
@@ -570,7 +554,8 @@ async def cmd_help(message: Message):
         "Используйте кнопки:\n"
         "🌐 Онлайн — расписание онлайн-групп\n"
         "🏙 Живые — очные собрания по городам\n"
-        "💫 Установка — случайная аффирмация\n\n"
+        "💫 Установка — случайная аффирмация\n"
+        "🔄 Запустить бота — перезапустить меню\n\n"
         "Команды: /start, /help, /slogan",
         parse_mode="HTML",
         reply_markup=reply_main_menu
