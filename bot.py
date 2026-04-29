@@ -22,6 +22,10 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
+class LiveGroupSearch(StatesGroup):
+    waiting_for_city = State()
+
+
 # ==================== ВРЕМЯ ====================
 def moscow_now():
     return datetime.utcnow() + timedelta(hours=3)
