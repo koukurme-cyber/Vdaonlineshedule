@@ -333,12 +333,14 @@ reply_main_menu = ReplyKeyboardMarkup(
     is_persistent=True,
 )
 
-def get_days_keyboard(prefix: str) -> InlineKeyboardMarkup:
+def get_days_keyboard(prefix: str, back_callback: str = None) -> InlineKeyboardMarkup:
     """Универсальная клавиатура выбора дня недели."""
     builder = InlineKeyboardBuilder()
     for i, day_name in enumerate(DAYS):
         builder.button(text=day_name, callback_data=f"{prefix}{i}")
     builder.adjust(2)
+    if back_callback:
+        builder.row(InlineKeyboardButton(text="← Назад", callback_data=back_callback))
     return builder.as_markup()
 
 # --- Онлайн ---
@@ -534,11 +536,22 @@ async def live_week(callback: CallbackQuery):
     await callback.answer()
 
 # Живые: выбор дня
+
+@dp.callback_query(F.data.startswith("live_period_"))
+async def live_period_back(callback: CallbackQuery):
+    city = callback.data[len("live_period_"):]
+    await callback.message.edit_text(
+        f"🏙 Город: <b>{escape_html(city)}</b>\nВыберите период:",
+        parse_mode="HTML",
+        reply_markup=live_period_keyboard(city)
+    )
+    await callback.answer()
+
 @dp.callback_query(F.data.startswith("live_choose_day_"))
 async def live_choose_day(callback: CallbackQuery):
     city = callback.data[len("live_choose_day_"):]
     await callback.message.edit_text(f"📆 Выберите день недели ({escape_html(city)}):",
-                                     reply_markup=get_days_keyboard(f"live_day_{city}_"))
+                                     reply_markup=get_days_keyboard(f"live_day_{city}_", back_callback=f"live_period_{city}"))
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("live_day_"))
