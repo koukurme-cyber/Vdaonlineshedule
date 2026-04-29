@@ -289,6 +289,19 @@ def format_live_group(name: str, address: str, time_start: str, time_end: str) -
     safe_addr = escape_html(address)
     return f'📍 <b>{time_start}-{time_end}</b> — {safe_name}\n   {safe_addr}'
 
+def split_long_message(text: str, limit: int = 3800) -> List[str]:
+    """Разбивает длинное сообщение на части по переносам строк."""
+    parts = []
+    while len(text) > limit:
+        cut = text.rfind("\n", 0, limit)
+        if cut == -1:
+            cut = limit
+        parts.append(text[:cut].strip())
+        text = text[cut:].lstrip("\n")
+    if text.strip():
+        parts.append(text.strip())
+    return parts
+
 # ==================== FSM ====================
 class LiveGroupSearch(StatesGroup):
     waiting_for_city = State()
@@ -436,10 +449,17 @@ async def online_today(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "online_full")
 async def online_full(callback: CallbackQuery):
-    text = get_online_full()
-    await callback.message.edit_text("📋 Полное расписание отправлено ниже.")
-    await callback.message.answer(text, parse_mode="HTML", disable_web_page_preview=True,
-                                  reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="mode_online")]]))
+    full_text = get_online_full()
+    parts = split_long_message(full_text)
+    await callback.message.edit_text("📋 Полное расписание:")
+    for idx, part in enumerate(parts):
+        if idx == len(parts) - 1:
+            await callback.message.answer(part, parse_mode="HTML", disable_web_page_preview=True,
+                                          reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                                              [InlineKeyboardButton(text="🔙 Назад", callback_data="mode_online")]
+                                          ]))
+        else:
+            await callback.message.answer(part, parse_mode="HTML", disable_web_page_preview=True)
     await callback.answer()
 
 # --- Живые группы: выбор города ---
