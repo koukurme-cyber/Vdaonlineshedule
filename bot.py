@@ -1019,35 +1019,59 @@ async def main_menu_callback(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "main_online")
 async def main_online(callback: CallbackQuery):
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
     await btn_online(callback.message)
     await safe_callback_answer(callback)
 
 
 @dp.callback_query(F.data == "main_live")
 async def main_live(callback: CallbackQuery):
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
     await btn_live(callback.message)
     await safe_callback_answer(callback)
 
 
 @dp.callback_query(F.data == "main_slogan")
 async def main_slogan(callback: CallbackQuery):
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
     await btn_slogan(callback.message)
     await safe_callback_answer(callback)
 
 
 @dp.callback_query(F.data == "main_sub")
 async def main_sub(callback: CallbackQuery):
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
     await show_sub_main(callback)
 
 
 @dp.callback_query(F.data == "main_my_groups")
 async def main_my_groups(callback: CallbackQuery):
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
     await btn_my_groups(callback.message)
     await safe_callback_answer(callback)
 
 
 @dp.callback_query(F.data == "main_unsubscribe")
 async def main_unsubscribe(callback: CallbackQuery):
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
     await btn_unsubscribe_all(callback.message)
     await safe_callback_answer(callback)
 
