@@ -1090,7 +1090,10 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str):
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
-    await message.answer("<b>Здравствуйте!</b>\n\nВыберите раздел в меню ниже.", parse_mode="HTML", reply_markup=reply_main_menu)
+    await message.answer(
+        "<b>Здравствуйте!</b>\n\nВыберите раздел в меню ниже.",
+        parse_mode="HTML",
+        reply_markup=main_menu_inline_keyboard()
 
 
 @dp.message(Command("help"))
