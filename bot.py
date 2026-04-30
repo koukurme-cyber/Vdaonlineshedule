@@ -1094,6 +1094,7 @@ async def cmd_start(message: Message):
         "<b>Здравствуйте!</b>\n\nВыберите раздел в меню ниже.",
         parse_mode="HTML",
         reply_markup=main_menu_inline_keyboard()
+    )
 
 
 @dp.message(Command("help"))
