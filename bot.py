@@ -26,7 +26,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SUBSCRIBERS_FILE = "vda_subscribers.json"
 CHECK_INTERVAL_SECONDS = 30
-# DAILY_SEND_HOUR и DAILY_SEND_MINUTE больше не используются жёстко – время индивидуальное
 
 
 class LiveGroupSearch(StatesGroup):
@@ -323,7 +322,8 @@ def format_online_group(time_str: str, name: str, url: str) -> str:
 
 def format_online_group_with_sub(time_str: str, name: str, url: str, uid: str) -> str:
     data = get_user_sub(uid)
-    bell = " 🔔" if data.get("all_online") or name in data.get("groups", {}) else ""
+    subscribed = data.get("all_online") or name in data.get("groups", {})
+    bell = " 🔔" if subscribed else " 🔕"
     return f'🟠 <b>{time_str}</b> — <a href="{url}">{escape_html(name)}</a>{bell}'
 
 
@@ -348,7 +348,8 @@ def format_live_group_with_sub(
 ) -> str:
     label = " 🔧" if is_work_meeting else ""
     data = get_user_sub(uid)
-    bell = " 🔔" if data.get("all_live") or name in data.get("groups", {}) else ""
+    subscribed = data.get("all_live") or name in data.get("groups", {})
+    bell = " 🔔" if subscribed else " 🔕"
     return f"• {start}–{end} — {escape_html(name)}{label}{bell} — {escape_html(address)}"
 
 
@@ -708,9 +709,10 @@ def build_reminder_key(group_type: str, group_name: str, date_str: str, time_str
     return f"{group_type}|{group_name}|{date_str}|{time_str}"
 
 
-def build_online_single_reminder(name: str, url: str, time_str: str) -> str:
+def build_online_single_reminder(name: str, url: str, time_str: str, minutes_before: int = 60) -> str:
+    before_text = "за час" if minutes_before == 60 else "за два часа"
     return (
-        "Привет! Это бережное напоминание: через час начнётся онлайн-группа.\n\n"
+        f"Привет! Это бережное напоминание: {before_text} начнётся онлайн-группа.\n\n"
         f"🌐 <b>{escape_html(name)}</b>\n"
         f"Начало: <b>{time_str}</b>\n"
         f"Ссылка: <a href=\"{url}\">перейти в группу</a>\n\n"
@@ -718,9 +720,10 @@ def build_online_single_reminder(name: str, url: str, time_str: str) -> str:
     )
 
 
-def build_online_multi_reminder(time_str: str, items: list[tuple[str, str]]) -> str:
+def build_online_multi_reminder(time_str: str, items: list[tuple[str, str]], minutes_before: int = 60) -> str:
+    before_text = "за час" if minutes_before == 60 else "за два часа"
     text = [
-        "Привет! Это бережное напоминание: через час начнутся онлайн-группы.",
+        f"Привет! Это бережное напоминание: {before_text} начнутся онлайн-группы.",
         "",
         f"Начало: <b>{time_str}</b>",
         "",
@@ -732,10 +735,11 @@ def build_online_multi_reminder(time_str: str, items: list[tuple[str, str]]) -> 
     return "\n".join(text)
 
 
-def build_live_single_reminder(name: str, address: str, start: str, is_work_meeting: bool) -> str:
+def build_live_single_reminder(name: str, address: str, start: str, is_work_meeting: bool, minutes_before: int = 60) -> str:
     label = " 🔧" if is_work_meeting else ""
+    before_text = "за час" if minutes_before == 60 else "за два часа"
     return (
-        "Привет! Это бережное напоминание: через час начнётся живая группа.\n\n"
+        f"Привет! Это бережное напоминание: {before_text} начнётся живая группа.\n\n"
         f"🏙 <b>{escape_html(name)}</b>{label}\n"
         f"Адрес: {escape_html(address)}\n"
         f"Начало: <b>{start}</b>\n\n"
@@ -743,9 +747,10 @@ def build_live_single_reminder(name: str, address: str, start: str, is_work_meet
     )
 
 
-def build_live_multi_reminder(start: str, items: list[tuple[str, str, bool]]) -> str:
+def build_live_multi_reminder(start: str, items: list[tuple[str, str, bool]], minutes_before: int = 60) -> str:
+    before_text = "за час" if minutes_before == 60 else "за два часа"
     text = [
-        "Привет! Это бережное напоминание: через час начнутся живые группы.",
+        f"Привет! Это бережное напоминание: {before_text} начнутся живые группы.",
         "",
         f"Начало: <b>{start}</b>",
         "",
@@ -780,13 +785,13 @@ def collect_due_reminders(user_data: dict, now_dt: datetime):
             name, url = items[0]
             remind_key = build_reminder_key("online", name, today_str, time_str) + f"|{r_min}"
             if reminders_meta.get(remind_key) != today_str:
-                text = build_online_single_reminder(name, url, time_str)
+                text = build_online_single_reminder(name, url, time_str, r_min)
                 due.append((remind_key, text, True))
         else:
             names = "|".join(sorted(name for name, _ in items))
             remind_key = build_reminder_key("online_multi", names, today_str, time_str) + f"|{r_min}"
             if reminders_meta.get(remind_key) != today_str:
-                text = build_online_multi_reminder(time_str, items)
+                text = build_online_multi_reminder(time_str, items, r_min)
                 due.append((remind_key, text, True))
 
     city = user_data.get("city")
@@ -806,13 +811,13 @@ def collect_due_reminders(user_data: dict, now_dt: datetime):
                 name, address, is_work_meeting = items[0]
                 remind_key = build_reminder_key("live", name, today_str, start) + f"|{r_min}"
                 if reminders_meta.get(remind_key) != today_str:
-                    text = build_live_single_reminder(name, address, start, is_work_meeting)
+                    text = build_live_single_reminder(name, address, start, is_work_meeting, r_min)
                     due.append((remind_key, text, False))
             else:
                 names = "|".join(sorted(name for name, _, _ in items))
                 remind_key = build_reminder_key("live_multi", names, today_str, start) + f"|{r_min}"
                 if reminders_meta.get(remind_key) != today_str:
-                    text = build_live_multi_reminder(start, items)
+                    text = build_live_multi_reminder(start, items, r_min)
                     due.append((remind_key, text, False))
     return due
 
@@ -1098,7 +1103,10 @@ async def sub_live_city_input(message: Message, state: FSMContext):
     matched = get_searchable_cities(query)
     await state.clear()
     if not matched:
-        await message.answer("Город не найден.")
+        await message.answer(
+            "Город не найден.",
+            reply_markup=back_markup("← К живым", "sub_live")
+        )
         return
     city = matched[0]
     uid = str(message.from_user.id)
@@ -1130,6 +1138,8 @@ async def sub_toggle_online_all(callback: CallbackQuery):
     uid = str(callback.from_user.id)
     data = get_user_sub(uid)
     data["all_online"] = not data.get("all_online", False)
+    if data["all_online"]:
+        data["groups"] = {k: v for k, v in data.get("groups", {}).items() if v.get("type") != "online"}
     set_user_sub(uid, data)
     await safe_callback_answer(callback, "Готово")
     await show_sub_online_list(callback)
@@ -1172,6 +1182,8 @@ async def sub_toggle_live_all(callback: CallbackQuery):
         await show_sub_live_city_selector(callback)
         return
     data["all_live"] = not data.get("all_live", False)
+    if data["all_live"]:
+        data["groups"] = {k: v for k, v in data.get("groups", {}).items() if v.get("type") != "live"}
     set_user_sub(uid, data)
     await safe_callback_answer(callback, "Готово")
     await show_sub_live_list(callback, city)
@@ -1217,10 +1229,12 @@ async def settings_menu(callback: CallbackQuery):
     daily_hour = data.get("daily_hour", 7)
     remind_before = data.get("remind_before", [60])
 
-    time_label = f"{daily_hour}:00"
-    if 60 in remind_before and 120 in remind_before:
+    time_label = f"{daily_hour:02d}:00"
+    remind_set = set(remind_before)
+
+    if remind_set == {60, 120}:
         remind_label = "за 1 и 2 часа"
-    elif 120 in remind_before:
+    elif remind_set == {120}:
         remind_label = "за 2 часа"
     else:
         remind_label = "за 1 час"
@@ -1228,34 +1242,59 @@ async def settings_menu(callback: CallbackQuery):
     text = (
         "⚙️ <b>Настройки уведомлений</b>\n\n"
         f"🕖 Утреннее расписание: <b>{time_label}</b>\n"
-        f"⏰ Напоминания о группах: <b>{remind_label}</b>\n"
-        "\nВыберите, что изменить:"
+        f"⏰ Напоминания о группах: <b>{remind_label}</b>\n\n"
+        "Выберите, что изменить:"
     )
 
     builder = InlineKeyboardBuilder()
-    for h in [5, 6, 7, 8]:
-        prefix = "✅ " if h == daily_hour else ""
-        builder.button(text=f"{prefix}{h}:00", callback_data=f"set_daily_hour_{h}")
-    builder.adjust(4)
-    remind_buttons = []
-    if remind_before == [60]:
-        remind_buttons.append(("✅ За 1 час", "set_remind_1"))
-    else:
-        remind_buttons.append(("За 1 час", "set_remind_1"))
-    if remind_before == [120]:
-        remind_buttons.append(("✅ За 2 часа", "set_remind_2"))
-    else:
-        remind_buttons.append(("За 2 часа", "set_remind_2"))
-    if set(remind_before) == {60, 120}:
-        remind_buttons.append(("✅ Оба", "set_remind_both"))
-    else:
-        remind_buttons.append(("Оба", "set_remind_both"))
-    for label, cb in remind_buttons:
-        builder.button(text=label, callback_data=cb)
-    builder.adjust(3)
+
+    builder.row(
+        InlineKeyboardButton(
+            text=f'{"✅ " if daily_hour == 5 else ""}05:00',
+            callback_data="set_daily_hour_5"
+        ),
+        InlineKeyboardButton(
+            text=f'{"✅ " if daily_hour == 6 else ""}06:00',
+            callback_data="set_daily_hour_6"
+        ),
+        InlineKeyboardButton(
+            text=f'{"✅ " if daily_hour == 7 else ""}07:00',
+            callback_data="set_daily_hour_7"
+        ),
+        InlineKeyboardButton(
+            text=f'{"✅ " if daily_hour == 8 else ""}08:00',
+            callback_data="set_daily_hour_8"
+        ),
+        InlineKeyboardButton(
+            text=f'{"✅ " if daily_hour == 9 else ""}09:00',
+            callback_data="set_daily_hour_9"
+        ),
+    )
+
+    builder.row(
+        InlineKeyboardButton(
+            text="✅ За 1 час" if remind_set == {60} else "За 1 час",
+            callback_data="set_remind_1"
+        ),
+        InlineKeyboardButton(
+            text="✅ За 2 часа" if remind_set == {120} else "За 2 часа",
+            callback_data="set_remind_2"
+        ),
+        InlineKeyboardButton(
+            text="✅ Оба" if remind_set == {60, 120} else "Оба",
+            callback_data="set_remind_both"
+        ),
+    )
+
     builder.row(InlineKeyboardButton(text="← К подписке", callback_data="sub_main_back"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="main_menu"))
-    await safe_edit_text(callback.message, text, parse_mode="HTML", reply_markup=builder.as_markup())
+
+    await safe_edit_text(
+        callback.message,
+        text,
+        parse_mode="HTML",
+        reply_markup=builder.as_markup(),
+    )
     await safe_callback_answer(callback)
 
 
@@ -1273,13 +1312,15 @@ async def set_daily_hour(callback: CallbackQuery):
 async def set_remind(callback: CallbackQuery):
     uid = str(callback.from_user.id)
     data = get_user_sub(uid)
-    option = callback.data.split("_")[-1]  # 1, 2, both
+    option = callback.data.split("_")[-1]
     if option == "1":
         data["remind_before"] = [60]
     elif option == "2":
         data["remind_before"] = [120]
     elif option == "both":
         data["remind_before"] = [60, 120]
+    else:
+        data["remind_before"] = [60]
     set_user_sub(uid, data)
     await settings_menu(callback)
 
@@ -1292,28 +1333,18 @@ async def btn_my_groups(message: Message):
     has_any = False
 
     if data.get("all_online"):
-        text += "\n\n🔔 Все онлайн-группы"
+        text += "\n\n🌐 все онлайн"
         has_any = True
 
     if data.get("all_live"):
-        city = data.get("city", "город не указан")
-        text += f"\n\n🏙 Все живые группы в {escape_html(city)}"
+        text += "\n\n🏙 все живые"
         has_any = True
 
     specifics = data.get("groups", {})
-    filtered_specifics = {}
-    for name, gdata in specifics.items():
-        gtype = gdata.get("type")
-        if gtype == "online" and data.get("all_online"):
-            continue
-        if gtype == "live" and data.get("all_live") and data.get("city"):
-            continue
-        filtered_specifics[name] = gdata
-
-    if filtered_specifics:
+    if specifics:
         if not has_any:
             text += "\n"
-        for name, gdata in filtered_specifics.items():
+        for name, gdata in specifics.items():
             emoji = "🌐" if gdata.get("type") == "online" else "🏙"
             text += f"\n{emoji} {escape_html(name)}"
         has_any = True
@@ -1510,7 +1541,10 @@ async def live_search_city_handle(message: Message, state: FSMContext):
     matched = get_searchable_cities(query)
     await state.clear()
     if not matched:
-        await message.answer("Город не найден.", reply_markup=reply_main_menu)
+        await message.answer(
+            "Город не найден.",
+            reply_markup=back_markup("← К городам", "mode_live")
+        )
         return
     if len(matched) == 1:
         city = matched[0]
