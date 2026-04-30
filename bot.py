@@ -344,6 +344,19 @@ def format_live_group_with_sub(
     bell = " 🔔" if data.get("all_live") or name in data.get("groups", {}) else ""
     return f"• {start}–{end} — {escape_html(name)}{label}{bell} — {escape_html(address)}"
 
+
+def format_day_header(day_name: str, date_label: Optional[str] = None) -> str:
+    day = escape_html(day_name)
+    if date_label:
+        return f"━━━ <b>{day}</b> · <code>{escape_html(date_label)}</code> ━━━"
+    return f"━━━ <b>{day}</b> ━━━"
+
+
+def back_markup(text: str, callback_data: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=text, callback_data=callback_data)]]
+    )
+
 async def safe_callback_answer(callback: CallbackQuery, text: str = ""):
     try:
         await callback.answer(text)
@@ -891,17 +904,21 @@ def live_period_keyboard(city: str):
         InlineKeyboardButton(text="📋 Вся неделя", callback_data=f"live_week_{cid}"),
     )
     builder.row(InlineKeyboardButton(text="📆 Выбрать день", callback_data=f"live_choose_day_{cid}"))
-    builder.row(InlineKeyboardButton(text="← Назад", callback_data="mode_live"))
+    builder.row(InlineKeyboardButton(text="← К городам", callback_data="mode_live"))
     return builder.as_markup()
 
 
-def get_days_keyboard(prefix: str, back_callback: Optional[str] = None) -> InlineKeyboardMarkup:
+def get_days_keyboard(
+    prefix: str,
+    back_callback: Optional[str] = None,
+    back_text: str = "← Назад",
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for i, day_name in enumerate(DAYS):
         builder.button(text=day_name, callback_data=f"{prefix}{i}")
     builder.adjust(2)
     if back_callback:
-        builder.row(InlineKeyboardButton(text="← Назад", callback_data=back_callback))
+        builder.row(InlineKeyboardButton(text=back_text, callback_data=back_callback))
     return builder.as_markup()
 
 
@@ -930,7 +947,7 @@ async def show_sub_online_list(callback: CallbackQuery):
         subbed = is_user_subscribed_to_online(data, name)
         prefix = "🔔" if subbed else "🔕"
         builder.row(InlineKeyboardButton(text=f"{prefix} {name}", callback_data=f"sub_toggle_online_{gid}"))
-    builder.row(InlineKeyboardButton(text="← Назад", callback_data="sub_main_back"))
+    builder.row(InlineKeyboardButton(text="← К подписке", callback_data="sub_main_back"))
     await safe_edit_text(callback.message, "🌐 Онлайн-группы\n\n🔔 — подписаны\n🔕 — не подписаны", parse_mode="HTML", reply_markup=builder.as_markup())
     await safe_callback_answer(callback)
 
@@ -942,7 +959,7 @@ async def show_sub_live_city_selector(target: CallbackQuery | Message):
         builder.button(text=city, callback_data=f"sub_live_city_{cid}")
     builder.adjust(2)
     builder.row(InlineKeyboardButton(text="🔍 Найти", callback_data="sub_live_city_search"))
-    builder.row(InlineKeyboardButton(text="← Назад", callback_data="sub_main_back"))
+    builder.row(InlineKeyboardButton(text="← К подписке", callback_data="sub_main_back"))
     text = "🏙 Выберите город для подписки на живые группы:"
     if isinstance(target, CallbackQuery):
         await safe_edit_text(target.message, text, reply_markup=builder.as_markup())
@@ -964,7 +981,7 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str):
         prefix = "🔔" if subbed else "🔕"
         builder.row(InlineKeyboardButton(text=f"{prefix} {name}", callback_data=f"sub_toggle_live_{gid}"))
     builder.row(InlineKeyboardButton(text="🏙 Сменить город", callback_data="sub_live_city_change"))
-    builder.row(InlineKeyboardButton(text="← Назад", callback_data="sub_main_back"))
+    builder.row(InlineKeyboardButton(text="← К подписке", callback_data="sub_main_back"))
     text = f"🏙 Живые группы в {escape_html(city)}\n\n🔔 — подписаны\n🔕 — не подписаны"
     if isinstance(target, CallbackQuery):
         await safe_edit_text(target.message, text, parse_mode="HTML", reply_markup=builder.as_markup())
@@ -1036,7 +1053,7 @@ async def sub_live_city_search(callback: CallbackQuery, state: FSMContext):
     await safe_edit_text(
         callback.message,
         "Введите город для подписки:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data="sub_live")]]),
+        reply_markup=back_markup("← К живым", "sub_live"),
     )
     await safe_callback_answer(callback)
 
@@ -1189,9 +1206,17 @@ async def online_today(callback: CallbackQuery):
     day_index = moscow_now().weekday()
     groups = get_online_by_day(day_index)
     uid = str(callback.from_user.id)
-    text = f"📅 Онлайн сегодня (<b>{DAYS[day_index]}</b>):\n\n"
+
+    text = f"{format_day_header(DAYS[day_index])}\n\n"
     text += "\n".join(format_online_group_with_sub(t, n, u, uid) for t, n, u in groups) if groups else "Нет групп."
-    await safe_edit_text(callback.message, text, parse_mode="HTML", disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data="mode_online")]]))
+
+    await safe_edit_text(
+        callback.message,
+        text,
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+        reply_markup=back_markup("← К онлайн", "mode_online"),
+    )
     await safe_callback_answer(callback)
 
 
@@ -1199,16 +1224,20 @@ async def online_today(callback: CallbackQuery):
 async def online_full(callback: CallbackQuery):
     full_text = get_online_full()
     parts = split_long_message(full_text)
-    await safe_edit_text(callback.message, "📋 Полное расписание:")
+    await safe_edit_text(callback.message, "📋 Полное расписание:", parse_mode="HTML")
     for idx, part in enumerate(parts):
-        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data="mode_online")]]) if idx == len(parts) - 1 else None
+        kb = back_markup("← К онлайн", "mode_online") if idx == len(parts) - 1 else None
         await callback.message.answer(part, parse_mode="HTML", disable_web_page_preview=True, reply_markup=kb)
     await safe_callback_answer(callback)
 
 
 @dp.callback_query(F.data == "online_choose_day")
 async def online_choose_day(callback: CallbackQuery):
-    await safe_edit_text(callback.message, "📆 Выберите день:", reply_markup=get_days_keyboard("online_day_"))
+    await safe_edit_text(
+        callback.message,
+        "📆 Выберите день:",
+        reply_markup=get_days_keyboard("online_day_", back_callback="mode_online", back_text="← К онлайн"),
+    )
     await safe_callback_answer(callback)
 
 
@@ -1217,9 +1246,17 @@ async def online_show_day(callback: CallbackQuery):
     day_index = int(callback.data.split("_")[-1])
     groups = get_online_by_day(day_index)
     uid = str(callback.from_user.id)
-    text = f"📅 Онлайн — <b>{DAYS[day_index]}</b>:\n\n"
+
+    text = f"{format_day_header(DAYS[day_index])}\n\n"
     text += "\n".join(format_online_group_with_sub(t, n, u, uid) for t, n, u in groups) if groups else "Нет групп."
-    await safe_edit_text(callback.message, text, parse_mode="HTML", disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data="online_choose_day")]]))
+
+    await safe_edit_text(
+        callback.message,
+        text,
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+        reply_markup=back_markup("← К дням", "online_choose_day"),
+    )
     await safe_callback_answer(callback)
 
 
@@ -1250,9 +1287,16 @@ async def live_today(callback: CallbackQuery):
     day_index = moscow_now().weekday()
     groups = get_live_groups_for_day(city, day_index)
     uid = str(callback.from_user.id)
-    text = f"📅 {escape_html(city)} сегодня (<b>{DAYS[day_index]}</b>):\n\n"
+
+    text = f"🏙 <b>{escape_html(city)}</b>\n\n{format_day_header(DAYS[day_index])}\n\n"
     text += "\n".join(format_live_group_with_sub(n, a, s, e, w, uid) for n, a, s, e, w in groups) if groups else "Нет групп."
-    await safe_edit_text(callback.message, text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data=f"live_period_{cid}")]]))
+
+    await safe_edit_text(
+        callback.message,
+        text,
+        parse_mode="HTML",
+        reply_markup=back_markup("← К городу", f"live_period_{cid}"),
+    )
     await safe_callback_answer(callback)
 
 
@@ -1267,13 +1311,7 @@ async def live_week(callback: CallbackQuery):
     await safe_edit_text(callback.message, "📋 Расписание на неделю:", parse_mode="HTML")
 
     for idx, part in enumerate(parts):
-        kb = None
-        if idx == len(parts) - 1:
-            kb = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="← Назад", callback_data=f"live_period_{cid}")]
-                ]
-            )
+        kb = back_markup("← К городу", f"live_period_{cid}") if idx == len(parts) - 1 else None
         await callback.message.answer(part, parse_mode="HTML", reply_markup=kb)
 
     await safe_callback_answer(callback)
@@ -1291,7 +1329,16 @@ async def live_period_back(callback: CallbackQuery):
 async def live_choose_day(callback: CallbackQuery):
     cid = callback.data[len("live_choose_day_"):]
     city = id_to_city.get(cid, cid)
-    await safe_edit_text(callback.message, f"📆 {escape_html(city)}:", reply_markup=get_days_keyboard(f"live_day_{cid}_", back_callback=f"live_period_{cid}"))
+    await safe_edit_text(
+        callback.message,
+        f"📆 <b>{escape_html(city)}</b>\n\nВыберите день:",
+        parse_mode="HTML",
+        reply_markup=get_days_keyboard(
+            f"live_day_{cid}_",
+            back_callback=f"live_period_{cid}",
+            back_text="← К городу",
+        ),
+    )
     await safe_callback_answer(callback)
 
 
@@ -1304,16 +1351,27 @@ async def live_show_day(callback: CallbackQuery):
     day_index = int(idx_str)
     groups = get_live_groups_for_day(city, day_index)
     uid = str(callback.from_user.id)
-    text = f"📅 {escape_html(city)} — <b>{DAYS[day_index]}</b>:\n\n"
+
+    text = f"🏙 <b>{escape_html(city)}</b>\n\n{format_day_header(DAYS[day_index])}\n\n"
     text += "\n".join(format_live_group_with_sub(n, a, s, e, w, uid) for n, a, s, e, w in groups) if groups else "Нет групп."
-    await safe_edit_text(callback.message, text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data=f"live_choose_day_{cid}")]]))
+
+    await safe_edit_text(
+        callback.message,
+        text,
+        parse_mode="HTML",
+        reply_markup=back_markup("← К дням", f"live_choose_day_{cid}"),
+    )
     await safe_callback_answer(callback)
 
 
 @dp.callback_query(F.data == "live_search_city")
 async def live_search_city_start(callback: CallbackQuery, state: FSMContext):
     await state.set_state(LiveGroupSearch.waiting_for_city)
-    await safe_edit_text(callback.message, "🔍 Введите город:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data="mode_live")]]))
+    await safe_edit_text(
+        callback.message,
+        "🔍 Введите город:",
+        reply_markup=back_markup("← К городам", "mode_live"),
+    )
     await safe_callback_answer(callback)
 
 
@@ -1334,7 +1392,7 @@ async def live_search_city_handle(message: Message, state: FSMContext):
             cid = city_to_id.get(c, c)
             builder.button(text=c, callback_data=f"live_city_{cid}")
         builder.adjust(1)
-        builder.row(InlineKeyboardButton(text="← Назад", callback_data="mode_live"))
+        builder.row(InlineKeyboardButton(text="← К городам", callback_data="mode_live"))
         await message.answer("🔍 Уточните:", reply_markup=builder.as_markup())
 
 
