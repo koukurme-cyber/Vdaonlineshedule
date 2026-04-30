@@ -261,24 +261,33 @@ def normalize_user_sub(data: Optional[dict]) -> dict:
         "daily_hour": 7,
         "remind_before": [60],
         "meta": {"last_daily_sent": None, "last_reminders": {}},
+        "online_settings": {"daily_hour": 7, "remind_before": [60]},
+        "live_settings": {"daily_hour": 7, "remind_before": [60]},
     }
     if not isinstance(data, dict):
         return base
-    base.update(data)
-    if not isinstance(base.get("groups"), dict):
-        base["groups"] = {}
-    if not isinstance(base.get("meta"), dict):
+    for key in ("city", "all_online", "all_live", "groups", "meta", "daily_hour", "remind_before"):
+        if key in data:
+            base[key] = data[key]
+    if "online_settings" in data and isinstance(data["online_settings"], dict):
+        base["online_settings"] = data["online_settings"]
+    else:
+        base["online_settings"]["daily_hour"] = data.get("daily_hour", 7)
+        base["online_settings"]["remind_before"] = data.get("remind_before", [60])
+    if "live_settings" in data and isinstance(data["live_settings"], dict):
+        base["live_settings"] = data["live_settings"]
+    else:
+        base["live_settings"]["daily_hour"] = data.get("daily_hour", 7)
+        base["live_settings"]["remind_before"] = data.get("remind_before", [60])
+    if not isinstance(base["meta"], dict):
         base["meta"] = {}
-    if not isinstance(base["meta"].get("last_reminders"), dict):
-        base["meta"]["last_reminders"] = {}
     if "last_daily_sent" not in base["meta"]:
         base["meta"]["last_daily_sent"] = None
-    if "daily_hour" not in base:
-        base["daily_hour"] = 7
-    if "remind_before" not in base:
-        base["remind_before"] = [60]
-    elif isinstance(base["remind_before"], int):
-        base["remind_before"] = [base["remind_before"]]
+    if "last_reminders" not in base["meta"]:
+        base["meta"]["last_reminders"] = {}
+    for settings in (base["online_settings"], base["live_settings"]):
+        if isinstance(settings.get("remind_before"), int):
+            settings["remind_before"] = [settings["remind_before"]]
     return base
 
 
@@ -767,19 +776,33 @@ def build_live_multi_reminder(start: str, items: list[tuple[str, str, bool]], mi
     return "\n".join(text)
 
 
+def get_online_settings(user_data: dict) -> dict:
+    return user_data.get("online_settings", {
+        "daily_hour": user_data.get("daily_hour", 7),
+        "remind_before": user_data.get("remind_before", [60]),
+    })
+
+
+def get_live_settings(user_data: dict) -> dict:
+    return user_data.get("live_settings", {
+        "daily_hour": user_data.get("daily_hour", 7),
+        "remind_before": user_data.get("remind_before", [60]),
+    })
+
+
 def collect_due_reminders(user_data: dict, now_dt: datetime):
     due = []
     today_str = now_dt.strftime("%Y-%m-%d")
     now_minutes = now_dt.hour * 60 + now_dt.minute
     reminders_meta = user_data.setdefault("meta", {}).setdefault("last_reminders", {})
-    remind_before = user_data.get("remind_before", [60])
 
+    online_settings = get_online_settings(user_data)
     online_due_by_time: Dict[tuple, list[tuple[str, str]]] = {}
     for time_str, name, url in get_online_by_day(now_dt.weekday()):
         if not is_user_subscribed_to_online(user_data, name):
             continue
         group_minutes = time_to_minutes(time_str)
-        for r_min in remind_before:
+        for r_min in online_settings.get("remind_before", [60]):
             if group_minutes - now_minutes == r_min:
                 key = (time_str, r_min)
                 online_due_by_time.setdefault(key, []).append((name, url))
@@ -800,12 +823,13 @@ def collect_due_reminders(user_data: dict, now_dt: datetime):
 
     city = user_data.get("city")
     if city:
+        live_settings = get_live_settings(user_data)
         live_due_by_time: Dict[tuple, list[tuple[str, str, bool]]] = {}
         for name, address, start, end, is_work_meeting in get_live_groups_for_day(city, now_dt.weekday()):
             if not is_user_subscribed_to_live(user_data, name):
                 continue
             start_minutes = time_to_minutes(start)
-            for r_min in remind_before:
+            for r_min in live_settings.get("remind_before", [60]):
                 if start_minutes - now_minutes == r_min:
                     key = (start, r_min)
                     live_due_by_time.setdefault(key, []).append((name, address, is_work_meeting))
@@ -844,8 +868,18 @@ async def send_daily_notifications(bot: Bot, now_dt: datetime):
         if not data.get("groups") and not data.get("all_online") and not data.get("all_live"):
             subs[uid] = data
             continue
-        daily_hour = data.get("daily_hour", 7)
-        if now_dt.hour != daily_hour:
+
+        send_online = False
+        send_live = False
+        if data.get("all_online") or any(v.get("type") == "online" for v in data.get("groups", {}).values()):
+            online_settings = get_online_settings(data)
+            if now_dt.hour == online_settings.get("daily_hour", 7):
+                send_online = True
+        if data.get("all_live") or any(v.get("type") == "live" for v in data.get("groups", {}).values()):
+            live_settings = get_live_settings(data)
+            if now_dt.hour == live_settings.get("daily_hour", 7):
+                send_live = True
+        if not send_online and not send_live:
             subs[uid] = data
             continue
         if data.setdefault("meta", {}).get("last_daily_sent") == today_str:
@@ -1022,7 +1056,8 @@ async def show_sub_main(target: CallbackQuery | Message):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🌐 Онлайн-группы", callback_data="sub_online"))
     builder.row(InlineKeyboardButton(text="🏙 Живые группы", callback_data="sub_live"))
-    builder.row(InlineKeyboardButton(text="⚙️ Настройки уведомлений", callback_data="sub_settings"))
+    builder.row(InlineKeyboardButton(text="🌐 Уведомления для онлайн", callback_data="sub_settings_online"))
+    builder.row(InlineKeyboardButton(text="🏙 Уведомления для живых", callback_data="sub_settings_live"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="main_menu"))
     text = "<b>Подписка</b>\n\nВыберите тип групп или настройки:"
     if isinstance(target, CallbackQuery):
@@ -1043,6 +1078,7 @@ async def show_sub_online_list(callback: CallbackQuery):
         prefix = "🔔" if subbed else "🔕"
         builder.row(InlineKeyboardButton(text=f"{prefix} {name}", callback_data=f"sub_toggle_online_{gid}"))
     builder.row(InlineKeyboardButton(text="← К подписке", callback_data="sub_main_back"))
+    builder.row(InlineKeyboardButton(text="⚙️ Настройки уведомлений", callback_data="sub_settings_online"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="main_menu"))
     await safe_edit_text(callback.message, "🌐 Онлайн-группы\n\n🔔 — подписаны\n🔕 — не подписаны", parse_mode="HTML", reply_markup=builder.as_markup())
     await safe_callback_answer(callback)
@@ -1079,6 +1115,7 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str):
         builder.row(InlineKeyboardButton(text=f"{prefix} {name}", callback_data=f"sub_toggle_live_{gid}"))
     builder.row(InlineKeyboardButton(text="🏙 Сменить город", callback_data="sub_live_city_change"))
     builder.row(InlineKeyboardButton(text="← К подписке", callback_data="sub_main_back"))
+    builder.row(InlineKeyboardButton(text="⚙️ Настройки уведомлений", callback_data="sub_settings_live"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="main_menu"))
     text = f"🏙 Живые группы в {escape_html(city)}\n\n🔔 — подписаны\n🔕 — не подписаны"
     if isinstance(target, CallbackQuery):
@@ -1102,14 +1139,18 @@ async def cmd_help(message: Message):
     await message.answer(
         "<b>Команды</b>\n\n/start — главное меню\n/help — помощь\n/slogan — случайная фраза поддержки",
         parse_mode="HTML",
-        reply_markup=reply_main_menu,
+        reply_markup=back_markup("⬅️ Главное меню", "main_menu")
     )
 
 
 @dp.message(Command("slogan"))
 async def cmd_slogan(message: Message):
     slogan = random.choice(SLOGANS_AND_AFFIRMATIONS)
-    await message.answer(f"<b>Фраза поддержки:</b>\n<i>{escape_html(slogan)}</i>", parse_mode="HTML")
+    await message.answer(
+        f"<b>Фраза поддержки:</b>\n<i>{escape_html(slogan)}</i>",
+        parse_mode="HTML",
+        reply_markup=back_markup("⬅️ Главное меню", "main_menu")
+    )
 
 
 @dp.message(F.text == "🌐 Онлайн")
@@ -1125,7 +1166,11 @@ async def btn_live(message: Message):
 @dp.message(F.text == "💫 Установка")
 async def btn_slogan(message: Message):
     slogan = random.choice(SLOGANS_AND_AFFIRMATIONS)
-    await message.answer(f"<b>Установка</b>\n<i>{escape_html(slogan)}</i>", parse_mode="HTML")
+    await message.answer(
+        f"<b>Установка</b>\n<i>{escape_html(slogan)}</i>",
+        parse_mode="HTML",
+        reply_markup=back_markup("⬅️ Главное меню", "main_menu")
+    )
 
 
 @dp.message(F.text == "🔔 Подписка")
@@ -1285,16 +1330,42 @@ async def sub_main_back(callback: CallbackQuery):
     await show_sub_main(callback)
 
 
-@dp.callback_query(F.data == "sub_settings")
-async def settings_menu(callback: CallbackQuery):
-    uid = str(callback.from_user.id)
+@dp.callback_query(F.data == "sub_settings_online")
+async def sub_settings_online(callback: CallbackQuery):
+    await settings_menu(callback, "online")
+
+
+@dp.callback_query(F.data == "sub_settings_live")
+async def sub_settings_live(callback: CallbackQuery):
+    await settings_menu(callback, "live")
+
+
+async def settings_menu(target, group_type: str):
+    if isinstance(target, CallbackQuery):
+        message = target.message
+        uid = str(target.from_user.id)
+        use_edit = True
+        answer_func = lambda: safe_callback_answer(target)
+    else:
+        message = target
+        uid = str(target.from_user.id)
+        use_edit = False
+        answer_func = lambda: None
+
     data = get_user_sub(uid)
-    daily_hour = data.get("daily_hour", 7)
-    remind_before = data.get("remind_before", [60])
+    if group_type == "online":
+        settings = get_online_settings(data)
+        title = "🌐 Настройки уведомлений для онлайн"
+        prefix = "online"
+    else:
+        settings = get_live_settings(data)
+        title = "🏙 Настройки уведомлений для живых"
+        prefix = "live"
 
-    time_label = f"{daily_hour:02d}:00"
+    daily_hour = settings["daily_hour"]
+    remind_before = settings["remind_before"]
     remind_set = set(remind_before)
-
+    time_label = f"{daily_hour:02d}:00"
     if remind_set == {60, 120}:
         remind_label = "за 1 и 2 часа"
     elif remind_set == {120}:
@@ -1303,89 +1374,73 @@ async def settings_menu(callback: CallbackQuery):
         remind_label = "за 1 час"
 
     text = (
-        "⚙️ <b>Настройки уведомлений</b>\n\n"
+        f"<b>{title}</b>\n\n"
         f"🕖 Утреннее расписание: <b>{time_label}</b>\n"
-        f"⏰ Напоминания о группах: <b>{remind_label}</b>\n\n"
+        f"⏰ Напоминания: <b>{remind_label}</b>\n\n"
         "Выберите, что изменить:"
     )
 
     builder = InlineKeyboardBuilder()
-
-    builder.row(
-        InlineKeyboardButton(
-            text=f'{"✅ " if daily_hour == 5 else ""}05:00',
-            callback_data="set_daily_hour_5"
-        ),
-        InlineKeyboardButton(
-            text=f'{"✅ " if daily_hour == 6 else ""}06:00',
-            callback_data="set_daily_hour_6"
-        ),
-        InlineKeyboardButton(
-            text=f'{"✅ " if daily_hour == 7 else ""}07:00',
-            callback_data="set_daily_hour_7"
-        ),
-        InlineKeyboardButton(
-            text=f'{"✅ " if daily_hour == 8 else ""}08:00',
-            callback_data="set_daily_hour_8"
-        ),
-        InlineKeyboardButton(
-            text=f'{"✅ " if daily_hour == 9 else ""}09:00',
-            callback_data="set_daily_hour_9"
-        ),
-    )
-
-    builder.row(
-        InlineKeyboardButton(
-            text="✅ За 1 час" if remind_set == {60} else "За 1 час",
-            callback_data="set_remind_1"
-        ),
-        InlineKeyboardButton(
-            text="✅ За 2 часа" if remind_set == {120} else "За 2 часа",
-            callback_data="set_remind_2"
-        ),
-        InlineKeyboardButton(
-            text="✅ Оба" if remind_set == {60, 120} else "Оба",
-            callback_data="set_remind_both"
-        ),
-    )
-
+    for h in [5, 6, 7, 8, 9]:
+        builder.button(
+            text=f'{"✅ " if daily_hour == h else ""}{h:02d}:00',
+            callback_data=f"set_daily_hour_{prefix}_{h}"
+        )
+    builder.adjust(5)
+    remind_buttons = [
+        ("✅ За 1 час" if remind_set == {60} else "За 1 час", f"set_remind_{prefix}_1"),
+        ("✅ За 2 часа" if remind_set == {120} else "За 2 часа", f"set_remind_{prefix}_2"),
+        ("✅ Оба" if remind_set == {60, 120} else "Оба", f"set_remind_{prefix}_both"),
+    ]
+    for label, cb in remind_buttons:
+        builder.button(text=label, callback_data=cb)
+    builder.adjust(3)
     builder.row(InlineKeyboardButton(text="← К подписке", callback_data="sub_main_back"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="main_menu"))
 
-    await safe_edit_text(
-        callback.message,
-        text,
-        parse_mode="HTML",
-        reply_markup=builder.as_markup(),
-    )
-    await safe_callback_answer(callback)
+    if use_edit:
+        await safe_edit_text(message, text, parse_mode="HTML", reply_markup=builder.as_markup())
+        answer_func()
+    else:
+        await message.answer(text, parse_mode="HTML", reply_markup=builder.as_markup())
 
 
 @dp.callback_query(F.data.startswith("set_daily_hour_"))
 async def set_daily_hour(callback: CallbackQuery):
-    hour = int(callback.data.split("_")[-1])
+    parts = callback.data.split("_")
+    group_type = parts[3]   # online / live
+    hour = int(parts[4])
     uid = str(callback.from_user.id)
     data = get_user_sub(uid)
-    data["daily_hour"] = hour
+    if group_type == "online":
+        data.setdefault("online_settings", {})["daily_hour"] = hour
+    else:
+        data.setdefault("live_settings", {})["daily_hour"] = hour
     set_user_sub(uid, data)
-    await settings_menu(callback)
+    await settings_menu(callback, group_type)
 
 
 @dp.callback_query(F.data.startswith("set_remind_"))
 async def set_remind(callback: CallbackQuery):
+    parts = callback.data.split("_")
+    group_type = parts[2]   # online / live
+    option = parts[3]       # 1 / 2 / both
     uid = str(callback.from_user.id)
     data = get_user_sub(uid)
-    option = callback.data.split("_")[-1]
     if option == "1":
-        data["remind_before"] = [60]
+        remind = [60]
     elif option == "2":
-        data["remind_before"] = [120]
+        remind = [120]
     elif option == "both":
-        data["remind_before"] = [60, 120]
+        remind = [60, 120]
     else:
-        data["remind_before"] = [60]
+        remind = [60]
+    if group_type == "online":
+        data.setdefault("online_settings", {})["remind_before"] = remind
+    else:
+        data.setdefault("live_settings", {})["remind_before"] = remind
     set_user_sub(uid, data)
-    await settings_menu(callback)
+    await settings_menu(callback, group_type)
 
 
 @dp.message(F.text == "⭐ Мои группы")
@@ -1414,14 +1469,22 @@ async def btn_my_groups(message: Message):
 
     if not has_any:
         text += "\n\nПодписок пока нет."
-    await message.answer(text, parse_mode="HTML", reply_markup=reply_main_menu)
+
+    await message.answer(
+        text,
+        parse_mode="HTML",
+        reply_markup=back_markup("⬅️ Главное меню", "main_menu")
+    )
 
 
 @dp.message(F.text == "🔕 Отписаться")
 async def btn_unsubscribe_all(message: Message):
     uid = str(message.from_user.id)
     remove_subscriber(uid)
-    await message.answer("🔕 Вы отписались от всего.", reply_markup=reply_main_menu)
+    await message.answer(
+        "🔕 Вы отписались от всего.",
+        reply_markup=back_markup("⬅️ Главное меню", "main_menu")
+    )
 
 
 @dp.callback_query(F.data == "online_today")
