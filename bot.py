@@ -129,6 +129,7 @@ ONLINE_SCHEDULE = {
         ("14:00", "Венеция", "https://t.me/joinchat/AocB9y6QC_k2ZjJi"),
         ("18:00", "Весна", "https://t.me/vdavesna_2021"),
         ("19:00", "праВДА", "https://t.me/+ZYfdfXWBRltjZGEy"),
+        ("19:00", "ВДА в Рязани", "https://t.me/+MHSRTpkJliw5YzUy"),
         ("19:00", "Артплей (онлайн)", "https://t.me/VDAartPlay"),
         ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
         ("19:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
@@ -634,7 +635,7 @@ def get_live_week(city: str) -> str:
                     )
                     day_set.add(key)
         if day_set:
-            parts.append(f"{day_name} ({target_date.strftime('%d.%m')}):")
+            parts.append(format_day_header(day_name, target_date.strftime('%d.%m')))
             for name, address, start, end, is_work_meeting in sorted(day_set, key=lambda x: x[2]):
                 parts.append(
                     format_live_group(
@@ -645,6 +646,10 @@ def get_live_week(city: str) -> str:
                         is_work_meeting=is_work_meeting,
                     )
                 )
+            parts.append("")
+
+    if parts and parts[-1] == "":
+        parts.pop()
     return "\n".join(parts)
 
 
@@ -945,6 +950,23 @@ def get_days_keyboard(
     return builder.as_markup()
 
 
+def main_menu_inline_keyboard():
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="🌐 Онлайн", callback_data="main_online"),
+        InlineKeyboardButton(text="🏙 Живые", callback_data="main_live"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="💫 Установка", callback_data="main_slogan"),
+        InlineKeyboardButton(text="🔔 Подписка", callback_data="main_sub"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="⭐ Мои группы", callback_data="main_my_groups"),
+        InlineKeyboardButton(text="🔕 Отписаться", callback_data="main_unsubscribe"),
+    )
+    return builder.as_markup()
+
+
 dp = Dispatcher(storage=MemoryStorage())
 
 
@@ -954,7 +976,45 @@ async def main_menu_callback(callback: CallbackQuery):
         await callback.message.delete()
     except Exception:
         pass
-    await callback.message.answer("Главное меню", reply_markup=reply_main_menu)
+    await callback.message.answer(
+        "🏠 Главное меню\n\nВыберите раздел:",
+        reply_markup=main_menu_inline_keyboard()
+    )
+    await safe_callback_answer(callback)
+
+
+@dp.callback_query(F.data == "main_online")
+async def main_online(callback: CallbackQuery):
+    await btn_online(callback.message)
+    await safe_callback_answer(callback)
+
+
+@dp.callback_query(F.data == "main_live")
+async def main_live(callback: CallbackQuery):
+    await btn_live(callback.message)
+    await safe_callback_answer(callback)
+
+
+@dp.callback_query(F.data == "main_slogan")
+async def main_slogan(callback: CallbackQuery):
+    await btn_slogan(callback.message)
+    await safe_callback_answer(callback)
+
+
+@dp.callback_query(F.data == "main_sub")
+async def main_sub(callback: CallbackQuery):
+    await show_sub_main(callback)
+
+
+@dp.callback_query(F.data == "main_my_groups")
+async def main_my_groups(callback: CallbackQuery):
+    await btn_my_groups(callback.message)
+    await safe_callback_answer(callback)
+
+
+@dp.callback_query(F.data == "main_unsubscribe")
+async def main_unsubscribe(callback: CallbackQuery):
+    await btn_unsubscribe_all(callback.message)
     await safe_callback_answer(callback)
 
 
