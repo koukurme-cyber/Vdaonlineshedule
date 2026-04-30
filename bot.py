@@ -5,7 +5,7 @@ import os
 import random
 import re
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.exceptions import TelegramBadRequest
@@ -30,7 +30,6 @@ DAILY_SEND_HOUR = 7
 DAILY_SEND_MINUTE = 0
 
 
-# ==================== СОСТОЯНИЯ ====================
 class LiveGroupSearch(StatesGroup):
     waiting_for_city = State()
 
@@ -39,10 +38,201 @@ class SubCitySearch(StatesGroup):
     waiting_for_city = State()
 
 
-# ==================== ВРЕМЯ ====================
+reply_main_menu = ReplyKeyboardMarkup(
+    keyboard=[
+        [
+            KeyboardButton(text="🌐 Онлайн"),
+            KeyboardButton(text="🏙 Живые"),
+            KeyboardButton(text="💫 Установка"),
+        ],
+        [
+            KeyboardButton(text="🔔 Подписка"),
+            KeyboardButton(text="⭐ Мои группы"),
+            KeyboardButton(text="🔕 Отписаться"),
+        ],
+    ],
+    resize_keyboard=True,
+    is_persistent=True,
+)
+
+DAYS = [
+    "Понедельник",
+    "Вторник",
+    "Среда",
+    "Четверг",
+    "Пятница",
+    "Суббота",
+    "Воскресенье",
+]
+
+ONLINE_SCHEDULE = {
+    0: [
+        ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
+        ("07:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
+        ("07:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
+        ("08:00", "Единство утро", "https://t.me/ACAgroupUnityMoscow"),
+        ("08:00", "Говори Доверяй Чувствуй", "https://t.me/govori_vda"),
+        ("09:00", "Доверие", "https://t.me/VDADoverie"),
+        ("12:00", "День за днём", "https://t.me/+BwAsiX1KsGljZjQy"),
+        ("17:00", "Шаг за шагом", "https://t.me/joinchat/4SFNdPrxumNkYzky"),
+        ("18:00", "Весна", "https://t.me/vdavesna_2021"),
+        ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
+        ("19:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
+        ("21:00", "ДЫШИ!", "https://t.me/breathelivebe"),
+        ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
+        ("21:00", "Свобода", "https://t.me/vda_svoboda"),
+    ],
+    1: [
+        ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
+        ("07:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
+        ("07:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
+        ("09:00", "Доверие", "https://t.me/VDADoverie"),
+        ("12:00", "День за днём", "https://t.me/+BwAsiX1KsGljZjQy"),
+        ("15:00", "ВДА вокруг света", "https://t.me/+nFn14RqYkyozZmUy"),
+        ("18:00", "Весна", "https://t.me/vdavesna_2021"),
+        ("19:00", "Артплей", "https://t.me/VDAartPlay"),
+        ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
+        ("19:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
+        ("20:00", "Феникс", "https://t.me/+1GAp8vi4hyNmMzUy"),
+        ("20:00", "По шагам Тони А.", "https://t.me/+ajasg4oH0SU3MjFi"),
+        ("21:00", "ДЫШИ!", "https://t.me/breathelivebe"),
+        ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
+        ("21:00", "Свобода", "https://t.me/vda_svoboda"),
+    ],
+    2: [
+        ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
+        ("07:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
+        ("07:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
+        ("08:00", "Единство утро", "https://t.me/ACAgroupUnityMoscow"),
+        ("09:00", "Доверие", "https://t.me/VDADoverie"),
+        ("12:00", "День за днём", "https://t.me/+BwAsiX1KsGljZjQy"),
+        ("14:00", "Венеция", "https://t.me/joinchat/AocB9y6QC_k2ZjJi"),
+        ("18:00", "Весна", "https://t.me/vdavesna_2021"),
+        ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
+        ("19:00", "Вместе", "https://chat.whatsapp.com/0CvEyMffhB60ZHQcShdva7"),
+        ("19:00", "Точка Опоры", "https://us06web.zoom.us/j/88678026186?pwd=QYiLNtlro6gEZ3f6eVZdwu7CAHbVF3.1"),
+        ("19:00", "Светский круг (жен.)", "https://t.me/+Pyarr0R7MSEyMGIy"),
+        ("19:00", "ВДА-ВЕРА", "https://t.me/+J2m1MAbQ818zNTFi"),
+        ("19:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
+        ("19:30", "Эффект бабочки", "https://t.me/+FcaUkHDOuMpkMTI8"),
+        ("20:00", "Мужская ВДА", "https://t.me/+ewtjezZaCtM5YTdi"),
+        ("20:00", "Доверие (вопросы)", "https://t.me/VDADoverie"),
+        ("21:00", "ДЫШИ!", "https://t.me/breathelivebe"),
+        ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
+        ("21:00", "Свобода", "https://t.me/vda_svoboda"),
+        ("22:00", "Восст. Люб. Род.", "https://us02web.zoom.us/j/86893102645?pwd=d2N1UWFDY3Y5RXBpTUdQcWpDdEZVUT09UT09"),
+    ],
+    3: [
+        ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
+        ("07:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
+        ("07:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
+        ("09:00", "Доверие", "https://t.me/VDADoverie"),
+        ("12:00", "День за днём", "https://t.me/+BwAsiX1KsGljZjQy"),
+        ("14:00", "Венеция", "https://t.me/joinchat/AocB9y6QC_k2ZjJi"),
+        ("18:00", "Весна", "https://t.me/vdavesna_2021"),
+        ("19:00", "праВДА", "https://t.me/+ZYfdfXWBRltjZGEy"),
+        ("19:00", "ВДА в Рязани", "https://t.me/+MHSRTpkJliw5YzUy"),
+        ("19:00", "Артплей (онлайн)", "https://t.me/VDAartPlay"),
+        ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
+        ("19:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
+        ("21:00", "ДЫШИ!", "https://t.me/breathelivebe"),
+        ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
+        ("21:00", "Свобода", "https://t.me/vda_svoboda"),
+    ],
+    4: [
+        ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
+        ("07:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
+        ("07:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
+        ("08:00", "Говори Доверяй Чувствуй", "https://t.me/govori_vda"),
+        ("08:00", "Единство утро", "https://t.me/ACAgroupUnityMoscow"),
+        ("09:00", "Доверие", "https://t.me/VDADoverie"),
+        ("12:00", "День за днём", "https://t.me/+BwAsiX1KsGljZjQy"),
+        ("14:00", "Венеция", "https://t.me/joinchat/AocB9y6QC_k2ZjJi"),
+        ("14:00", "ВДА вокруг света", "https://t.me/+nFn14RqYkyozZmUy"),
+        ("18:00", "Весна", "https://t.me/vdavesna_2021"),
+        ("19:00", "Братский Круг", "https://t.me/+uEG2E5FVndA0YTc6"),
+        ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
+        ("19:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
+        ("20:00", "Феникс", "https://t.me/+1GAp8vi4hyNmMzUy"),
+        ("20:00", "Доверие (Любящий Родитель)", "https://t.me/VDADoverie"),
+        ("21:00", "ДЫШИ!", "https://t.me/breathelivebe"),
+        ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
+        ("21:00", "Свобода", "https://t.me/vda_svoboda"),
+    ],
+    5: [
+        ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
+        ("08:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
+        ("09:00", "Доверие", "https://t.me/VDADoverie"),
+        ("12:00", "День за днём", "https://t.me/+BwAsiX1KsGljZjQy"),
+        ("14:00", "Венеция", "https://t.me/joinchat/AocB9y6QC_k2ZjJi"),
+        ("18:00", "ВДА «Весь мир»", "https://t.me/+zfYoUgHPiVRhN2Iy"),
+        ("18:00", "Весна", "https://t.me/vdavesna_2021"),
+        ("19:00", "Девчата", "https://t.me/+FKs5HqhF711iZTli"),
+        ("19:00", "ВДА-ВЕРА", "https://t.me/+J2m1MAbQ818zNTFi"),
+        ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
+        ("20:00", "Восст. Люб. Род.", "https://us02web.zoom.us/j/86893102645?pwd=d2N1UWFDY3Y5RXBpTUdQcWpDdEZVUT09UT09"),
+        ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
+        ("21:00", "Свобода", "https://t.me/vda_svoboda"),
+    ],
+    6: [
+        ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
+        ("07:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
+        ("08:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
+        ("10:00", "ВДА НСК онлайн", "https://t.me/VDANsk"),
+        ("12:00", "Только сегодня (MAX)", "https://max.ru/join/y25EwyRl_K_F1OeJv5JbewpRpww71IKfWS-gwtTB65Q"),
+        ("12:00", "День за днём", "https://t.me/+BwAsiX1KsGljZjQy"),
+        ("12:30", "Мужская ВДА", "https://t.me/+ewtjezZaCtM5YTdi"),
+        ("14:00", "Венеция", "https://t.me/joinchat/AocB9y6QC_k2ZjJi"),
+        ("18:00", "Ежедневник ВДА", "https://t.me/VDAOXOTNIRYAD"),
+        ("18:00", "Весна", "https://t.me/vdavesna_2021"),
+        ("19:00", "Сила и Надежда (Watsup)", "https://chat.whatsapp.com/CUc0VVemIvl7Aoe2cuYCav"),
+        ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
+        ("19:30", "Эффект бабочки", "https://t.me/+FcaUkHDOuMpkMTI8"),
+        ("20:00", "Огоньки", "https://t.me/ogonki2025"),
+        ("20:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
+        ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
+        ("21:00", "Свобода", "https://t.me/vda_svoboda"),
+    ],
+}
+
+SLOGANS_AND_AFFIRMATIONS = [
+    "Программа простая, но не лёгкая",
+    "Жизнь больше, чем просто выживание",
+    "Можно жить по-другому",
+    "Только сегодня",
+    "Не суетись",
+    "Не усложняй",
+    "Прогресс, а не совершенство",
+    "Первым делом — главное",
+    "И эта боль тоже пройдет",
+    "Отпусти. Пусти Бога",
+    "Возвращайтесь снова и снова",
+]
+
+SPB_SUBURBS = [
+    "Санкт-Петербург",
+    "Пушкин",
+    "Петергоф",
+    "Всеволожск",
+    "Выборг",
+    "Кириши",
+]
+
+POPULAR_CITIES = [
+    "Москва",
+    "Санкт-Петербург",
+    "Казань",
+    "Новосибирск",
+    "Екатеринбург",
+    "Нижний Новгород",
+    "Краснодар",
+    "Самара",
+    "Ростов-на-Дону",
+]
+
+
 def moscow_now() -> datetime:
     return datetime.utcnow() + timedelta(hours=3)
-
 
 
 def time_to_minutes(hhmm: str) -> int:
@@ -50,7 +240,6 @@ def time_to_minutes(hhmm: str) -> int:
     return h * 60 + m
 
 
-# ==================== ХРАНЕНИЕ ====================
 def load_subscribers() -> dict:
     try:
         with open(SUBSCRIBERS_FILE, "r", encoding="utf-8") as f:
@@ -60,11 +249,9 @@ def load_subscribers() -> dict:
         return {}
 
 
-
 def save_subscribers(data: dict):
     with open(SUBSCRIBERS_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-
 
 
 def normalize_user_sub(data: Optional[dict]) -> dict:
@@ -73,14 +260,10 @@ def normalize_user_sub(data: Optional[dict]) -> dict:
         "all_online": False,
         "all_live": False,
         "groups": {},
-        "meta": {
-            "last_daily_sent": None,
-            "last_reminders": {},
-        },
+        "meta": {"last_daily_sent": None, "last_reminders": {}},
     }
     if not isinstance(data, dict):
         return base
-
     base.update(data)
     if not isinstance(base.get("groups"), dict):
         base["groups"] = {}
@@ -93,11 +276,9 @@ def normalize_user_sub(data: Optional[dict]) -> dict:
     return base
 
 
-
 def get_user_sub(uid: str) -> dict:
     subs = load_subscribers()
     return normalize_user_sub(subs.get(uid))
-
 
 
 def set_user_sub(uid: str, data: dict):
@@ -106,17 +287,14 @@ def set_user_sub(uid: str, data: dict):
     save_subscribers(subs)
 
 
-
 def remove_subscriber(uid: str):
     subs = load_subscribers()
     subs.pop(uid, None)
     save_subscribers(subs)
 
 
-# ==================== ФОРМАТИРОВАНИЕ ====================
 def escape_html(text: str) -> str:
     return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
 
 
 def split_long_message(text: str, limit: int = 3800) -> List[str]:
@@ -132,10 +310,8 @@ def split_long_message(text: str, limit: int = 3800) -> List[str]:
     return parts
 
 
-
 def format_online_group(time_str: str, name: str, url: str) -> str:
     return f'🟠 <b>{time_str}</b> — <a href="{url}">{escape_html(name)}</a>'
-
 
 
 def format_online_group_with_sub(time_str: str, name: str, url: str, uid: str) -> str:
@@ -144,11 +320,9 @@ def format_online_group_with_sub(time_str: str, name: str, url: str, uid: str) -
     return f'🟠 <b>{time_str}</b> — <a href="{url}">{escape_html(name)}</a>{bell}'
 
 
-
 def format_live_group(name: str, address: str, start: str, end: str, is_work_meeting: bool = False) -> str:
     label = " 🔧" if is_work_meeting else ""
     return f"• <b>{escape_html(name)}</b>{label} — {escape_html(address)} ({start}–{end})"
-
 
 
 def format_live_group_with_sub(name: str, address: str, start: str, end: str, is_work_meeting: bool, uid: str) -> str:
@@ -158,13 +332,11 @@ def format_live_group_with_sub(name: str, address: str, start: str, end: str, is
     return f"• <b>{escape_html(name)}</b>{label}{bell} — {escape_html(address)} ({start}–{end})"
 
 
-# ==================== CALLBACK SAFE ====================
 async def safe_callback_answer(callback: CallbackQuery, text: str = ""):
     try:
         await callback.answer(text)
     except Exception:
         pass
-
 
 
 def markup_signature(markup: Optional[InlineKeyboardMarkup]) -> str:
@@ -184,14 +356,11 @@ async def safe_edit_text(message: Message, text: str, **kwargs):
         current_text = message.html_text or message.text or ""
     except Exception:
         current_text = ""
-
     new_markup = kwargs.get("reply_markup")
     current_markup_sig = markup_signature(message.reply_markup) if getattr(message, "reply_markup", None) else ""
     new_markup_sig = markup_signature(new_markup)
-
     if current_text == text and current_markup_sig == new_markup_sig:
         return
-
     try:
         await message.edit_text(text, **kwargs)
     except TelegramBadRequest as e:
@@ -199,49 +368,6 @@ async def safe_edit_text(message: Message, text: str, **kwargs):
             raise
 
 
-# ==================== ДАННЫЕ ====================
-reply_main_menu = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="🌐 Онлайн"), KeyboardButton(text="🏙 Живые"), KeyboardButton(text="💫 Установка")],
-        [KeyboardButton(text="🔔 Подписка"), KeyboardButton(text="⭐ Мои группы"), KeyboardButton(text="🔕 Отписаться")],
-    ],
-    resize_keyboard=True,
-    is_persistent=True,
-)
-
-DAYS = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
-
-ONLINE_SCHEDULE = {
-    0: [("05:00","Восход","https://t.me/+gdi_B_ctmVJkMTAy"),("07:00","ВДА Утро","https://t.me/+KBt9VaElvMA4NTcy"),("07:00","Маяк ВДА","https://t.me/+1XGQ4SDkR8M0N2Yy"),("08:00","Единство утро","https://t.me/ACAgroupUnityMoscow"),("08:00","Говори Доверяй Чувствуй","https://t.me/govori_vda"),("09:00","Доверие","https://t.me/VDADoverie"),("12:00","День за днём","https://t.me/+BwAsiX1KsGljZjQy"),("17:00","Шаг за шагом","https://t.me/joinchat/4SFNdPrxumNkYzky"),("18:00","Весна","https://t.me/vdavesna_2021"),("19:00","Рассвет","https://t.me/+OOw9IMnM5x1hNDJi"),("19:00","Маяк ВДА","https://t.me/+1XGQ4SDkR8M0N2Yy"),("21:00","ДЫШИ!","https://t.me/breathelivebe"),("21:00","ВДА ВЕЧЕР","https://t.me/vda_vecher"),("21:00","Свобода","https://t.me/vda_svoboda")],
-    1: [("05:00","Восход","https://t.me/+gdi_B_ctmVJkMTAy"),("07:00","ВДА Утро","https://t.me/+KBt9VaElvMA4NTcy"),("07:00","Маяк ВДА","https://t.me/+1XGQ4SDkR8M0N2Yy"),("09:00","Доверие","https://t.me/VDADoverie"),("12:00","День за днём","https://t.me/+BwAsiX1KsGljZjQy"),("15:00","ВДА вокруг света","https://t.me/+nFn14RqYkyozZmUy"),("18:00","Весна","https://t.me/vdavesna_2021"),("19:00","Артплей","https://t.me/VDAartPlay"),("19:00","Рассвет","https://t.me/+OOw9IMnM5x1hNDJi"),("19:00","Маяк ВДА","https://t.me/+1XGQ4SDkR8M0N2Yy"),("20:00","Феникс","https://t.me/+1GAp8vi4hyNmMzUy"),("20:00","По шагам Тони А.","https://t.me/+ajasg4oH0SU3MjFi"),("21:00","ДЫШИ!","https://t.me/breathelivebe"),("21:00","ВДА ВЕЧЕР","https://t.me/vda_vecher"),("21:00","Свобода","https://t.me/vda_svoboda")],
-    2: [("05:00","Восход","https://t.me/+gdi_B_ctmVJkMTAy"),("07:00","ВДА Утро","https://t.me/+KBt9VaElvMA4NTcy"),("07:00","Маяк ВДА","https://t.me/+1XGQ4SDkR8M0N2Yy"),("08:00","Единство утро","https://t.me/ACAgroupUnityMoscow"),("09:00","Доверие","https://t.me/VDADoverie"),("12:00","День за днём","https://t.me/+BwAsiX1KsGljZjQy"),("14:00","Венеция","https://t.me/joinchat/AocB9y6QC_k2ZjJi"),("18:00","Весна","https://t.me/vdavesna_2021"),("19:00","Рассвет","https://t.me/+OOw9IMnM5x1hNDJi"),("19:00","Вместе","https://chat.whatsapp.com/0CvEyMffhB60ZHQcShdva7"),("19:00","Точка Опоры","https://us06web.zoom.us/j/88678026186?pwd=QYiLNtlro6gEZ3f6eVZdwu7CAHbVF3.1"),("19:00","Светский круг (жен.)","https://t.me/+Pyarr0R7MSEyMGIy"),("19:00","ВДА-ВЕРА","https://t.me/+J2m1MAbQ818zNTFi"),("19:00","Маяк ВДА","https://t.me/+1XGQ4SDkR8M0N2Yy"),("19:30","Эффект бабочки","https://t.me/+FcaUkHDOuMpkMTI8"),("20:00","Мужская ВДА","https://t.me/+ewtjezZaCtM5YTdi"),("20:00","Доверие (вопросы)","https://t.me/VDADoverie"),("21:00","ДЫШИ!","https://t.me/breathelivebe"),("21:00","ВДА ВЕЧЕР","https://t.me/vda_vecher"),("21:00","Свобода","https://t.me/vda_svoboda"),("22:00","Восст. Люб. Род.","https://us02web.zoom.us/j/86893102645?pwd=d2N1UWFDY3Y5RXBpTUdQcWpDdEZVUT09UT09")],
-    3: [("05:00","Восход","https://t.me/+gdi_B_ctmVJkMTAy"),("07:00","Маяк ВДА","https://t.me/+1XGQ4SDkR8M0N2Yy"),("07:00","ВДА Утро","https://t.me/+KBt9VaElvMA4NTcy"),("09:00","Доверие","https://t.me/VDADoverie"),("12:00","День за днём","https://t.me/+BwAsiX1KsGljZjQy"),("14:00","Венеция","https://t.me/joinchat/AocB9y6QC_k2ZjJi"),("18:00","Весна","https://t.me/vdavesna_2021"),("19:00","праВДА","https://t.me/+ZYfdfXWBRltjZGEy"),("19:00","ВДА в Рязани","https://t.me/+MHSRTpkJliw5YzUy"),("19:00","Артплей (онлайн)","https://t.me/VDAartPlay"),("19:00","Рассвет","https://t.me/+OOw9IMnM5x1hNDJi"),("19:00","Маяк ВДА","https://t.me/+1XGQ4SDkR8M0N2Yy"),("21:00","ДЫШИ!","https://t.me/breathelivebe"),("21:00","ВДА ВЕЧЕР","https://t.me/vda_vecher"),("21:00","Свобода","https://t.me/vda_svoboda")],
-    4: [("05:00","Восход","https://t.me/+gdi_B_ctmVJkMTAy"),("07:00","ВДА Утро","https://t.me/+KBt9VaElvMA4NTcy"),("07:00","Маяк ВДА","https://t.me/+1XGQ4SDkR8M0N2Yy"),("08:00","Говори Доверяй Чувствуй","https://t.me/govori_vda"),("08:00","Единство утро","https://t.me/ACAgroupUnityMoscow"),("09:00","Доверие","https://t.me/VDADoverie"),("12:00","День за днём","https://t.me/+BwAsiX1KsGljZjQy"),("14:00","Венеция","https://t.me/joinchat/AocB9y6QC_k2ZjJi"),("14:00","ВДА вокруг света","https://t.me/+nFn14RqYkyozZmUy"),("18:00","Весна","https://t.me/vdavesna_2021"),("19:00","Братский Круг","https://t.me/+uEG2E5FVndA0YTc6"),("19:00","Рассвет","https://t.me/+OOw9IMnM5x1hNDJi"),("19:00","Маяк ВДА","https://t.me/+1XGQ4SDkR8M0N2Yy"),("20:00","Феникс","https://t.me/+1GAp8vi4hyNmMzUy"),("20:00","Доверие (Любящий Родитель)","https://t.me/VDADoverie"),("21:00","ДЫШИ!","https://t.me/breathelivebe"),("21:00","ВДА ВЕЧЕР","https://t.me/vda_vecher"),("21:00","Свобода","https://t.me/vda_svoboda")],
-    5: [("05:00","Восход","https://t.me/+gdi_B_ctmVJkMTAy"),("08:00","ВДА Утро","https://t.me/+KBt9VaElvMA4NTcy"),("09:00","Доверие","https://t.me/VDADoverie"),("12:00","День за днём","https://t.me/+BwAsiX1KsGljZjQy"),("14:00","Венеция","https://t.me/joinchat/AocB9y6QC_k2ZjJi"),("18:00","ВДА «Весь мир»","https://t.me/+zfYoUgHPiVRhN2Iy"),("18:00","Весна","https://t.me/vdavesna_2021"),("19:00","Девчата","https://t.me/+FKs5HqhF711iZTli"),("19:00","ВДА-ВЕРА","https://t.me/+J2m1MAbQ818zNTFi"),("19:00","Рассвет","https://t.me/+OOw9IMnM5x1hNDJi"),("20:00","Восст. Люб. Род.","https://us02web.zoom.us/j/86893102645?pwd=d2N1UWFDY3Y5RXBpTUdQcWpDdEZVUT09UT09"),("21:00","ВДА ВЕЧЕР","https://t.me/vda_vecher"),("21:00","Свобода","https://t.me/vda_svoboda")],
-    6: [("05:00","Восход","https://t.me/+gdi_B_ctmVJkMTAy"),("07:00","Маяк ВДА","https://t.me/+1XGQ4SDkR8M0N2Yy"),("08:00","ВДА Утро","https://t.me/+KBt9VaElvMA4NTcy"),("10:00","ВДА НСК онлайн","https://t.me/VDANsk"),("12:00","Только сегодня (MAX)","https://max.ru/join/y25EwyRl_K_F1OeJv5JbewpRpww71IKfWS-gwtTB65Q"),("12:00","День за днём","https://t.me/+BwAsiX1KsGljZjQy"),("12:30","Мужская ВДА","https://t.me/+ewtjezZaCtM5YTdi"),("14:00","Венеция","https://t.me/joinchat/AocB9y6QC_k2ZjJi"),("18:00","Ежедневник ВДА","https://t.me/VDAOXOTNIRYAD"),("18:00","Весна","https://t.me/vdavesna_2021"),("19:00","Сила и Надежда (Watsup)","https://chat.whatsapp.com/CUc0VVemIvl7Aoe2cuYCav"),("19:00","Рассвет","https://t.me/+OOw9IMnM5x1hNDJi"),("19:30","Эффект бабочки","https://t.me/+FcaUkHDOuMpkMTI8"),("20:00","Огоньки","https://t.me/ogonki2025"),("20:00","Маяк ВДА","https://t.me/+1XGQ4SDkR8M0N2Yy"),("21:00","ВДА ВЕЧЕР","https://t.me/vda_vecher"),("21:00","Свобода","https://t.me/vda_svoboda")],
-}
-
-SLOGANS_AND_AFFIRMATIONS = [
-    "Программа простая, но не лёгкая", "Жизнь больше, чем просто выживание", "Можно жить по-другому", "Только сегодня",
-    "Не суетись", "Не усложняй", "Прогресс, а не совершенство", "Первым делом — главное", "И эта боль тоже пройдет",
-    "Отпусти. Пусти Бога", "Стоп — не будь Голодным, Злым, Одиноким и Уставшим", "Возвращайтесь снова и снова",
-    "Назови, но не обвиняй", "Попроси о помощи и прими её", "Без чувств нет исцеления",
-    "Сегодня я люблю и принимаю себя таким, какой я есть", "Сегодня я принимаю свои чувства",
-    "Сегодня я делюсь своими чувствами", "Сегодня я позволяю себе совершать ошибки",
-    "Сегодня мне достаточно того, кто я есть", "Сегодня я принимаю тебя таким, какой ты есть",
-    "Сегодня я позволю жить другим", "Сегодня я попрошу мою Высшую Силу о поддержке и руководстве мной",
-    "Сегодня я не стану обвинять ни тебя, ни себя", "Сегодня я имею право оберегать свои мысли, чувства и заботиться о своём теле",
-    "Сегодня я смогу сказать «Нет» без чувства вины", "Сегодня я смогу сказать «Да» без чувства стыда",
-    "Сегодня я желанный ребёнок любящих родителей", "Нормально знать, кто я есть", "Нормально доверять себе",
-    "Нормально сказать: я взрослый ребёнок из дисфункциональной семьи", "Нормально знать другой способ жить",
-    "Нормально отказывать без чувства вины", "Нормально дать себе передышку", "Нормально плакать от фильма или песни",
-    "Мои чувства нормальны, даже если я их только учусь различать", "Нормально злиться", "Нормально веселиться и праздновать",
-    "Нормально мечтать и надеяться", "Нормально отделяться с любовью", "Нормально заново учиться заботиться о себе",
-    "Нормально сказать: я люблю себя", "Нормально работать по программе ВДА",
-]
-
-
-# ==================== ЖИВЫЕ ГРУППЫ ====================
 def parse_live_schedule(raw_lines: str):
     groups = []
     for line in raw_lines.strip().split("\n"):
@@ -253,22 +379,18 @@ def parse_live_schedule(raw_lines: str):
         country, city, name, address, time_str = parts[:5]
         if country != "Россия":
             continue
-
         time_str = time_str.replace('"', '').replace('\\n', ' ')
         entries = re.split(r";|\n| и ", time_str)
         days = []
-
         for entry in entries:
             entry = entry.strip()
             if not entry:
                 continue
-
             day_found = None
             for i, day_name in enumerate(DAYS):
                 if day_name.lower() in entry.lower() or day_name[:3].lower() in entry.lower():
                     day_found = i
                     break
-
             if day_found is None:
                 short_map = {
                     "пн": 0, "пон": 0, "вт": 1, "вто": 1, "ср": 2, "сре": 2,
@@ -279,10 +401,8 @@ def parse_live_schedule(raw_lines: str):
                     if key in entry.lower():
                         day_found = idx
                         break
-
             if day_found is None:
                 continue
-
             occurrence = None
             e = entry.lower()
             if "последн" in e:
@@ -295,9 +415,7 @@ def parse_live_schedule(raw_lines: str):
                 occurrence = 3
             elif "четверт" in e and "четверг" not in e:
                 occurrence = 4
-
             is_work_meeting = "рабоч" in e or "рабочка" in e
-
             times = re.findall(r"(\d{1,2}[.:]\d{2})\s*[-–]\s*(\d{1,2}[.:]\d{2})", entry)
             if not times:
                 times = re.findall(r"с\s*(\d{1,2}[.:\-]\d{2})\s*до\s*(\d{1,2}[.:\-]\d{2})", entry)
@@ -306,24 +424,18 @@ def parse_live_schedule(raw_lines: str):
                 if not single:
                     single = re.findall(r"(?<!\d)(\d{1,2}[.:]\d{2})(?!\d)", entry)
                 if single:
-                    start = single[0].replace(".", ":")
-                    h, m = start.split(":")
-                    end_h = int(h) + 1
-                    end = f"{end_h:02d}:{m}"
+                    start = single[0].replace('.', ':').replace('-', ':')
+                    h, m = start.split(':')
+                    end = f"{(int(h) + 1):02d}:{m}"
                     times = [(start, end)]
-
-            if times:
-                start, end = times[0]
-                start = start.replace(".", ":").replace("-", ":")
-                end = end.replace(".", ":").replace("-", ":")
+            for start, end in times:
                 days.append({
                     "day": day_found,
-                    "start": start,
-                    "end": end,
+                    "start": start.replace('.', ':').replace('-', ':'),
+                    "end": end.replace('.', ':').replace('-', ':'),
                     "occurrence": occurrence,
                     "is_work_meeting": is_work_meeting,
                 })
-
         if days:
             groups.append({
                 "city": city.strip(),
@@ -336,18 +448,11 @@ def parse_live_schedule(raw_lines: str):
 
 try:
     with open("live_groups.tsv", "r", encoding="utf-8") as f:
-        raw_excel = f.read()
+        RAW_EXCEL = f.read()
 except FileNotFoundError:
-    print("❌ live_groups.tsv не найден")
-    raw_excel = ""
+    RAW_EXCEL = ""
 
-LIVE_GROUPS = parse_live_schedule(raw_excel)
-
-POPULAR_CITIES = [
-    "Москва", "Санкт-Петербург", "Ростов-на-Дону", "Казань", "Новосибирск", "Екатеринбург",
-    "Самара", "Нижний Новгород", "Краснодар", "Омск", "Калининград", "Воронеж",
-    "Челябинск", "Красноярск", "Уфа", "Тюмень", "Ижевск", "Тольятти", "Хабаровск", "Иркутск"
-]
+LIVE_GROUPS = parse_live_schedule(RAW_EXCEL) if RAW_EXCEL else []
 
 city_to_id: Dict[str, str] = {}
 id_to_city: Dict[str, str] = {}
@@ -365,35 +470,25 @@ for g in LIVE_GROUPS:
         id_to_city[cid] = city
         city_id_counter += 1
 
-SPB_SUBURBS = [
-    "Санкт-Петербург, город Пушкин", "Пушкин", "Петергоф", "Всеволожск", "Выборг", "Гатчина",
-    "Колпино", "Кронштадт", "Ломоносов", "Павловск", "Сестрорецк", "Зеленогорск"
-]
 
-
-# ==================== ID ГРУПП ====================
 def make_short_id(prefix: str, name: str) -> str:
     return prefix + hashlib.md5(name.encode("utf-8")).hexdigest()[:10]
 
 
 ONLINE_GROUP_ID_TO_NAME: Dict[str, str] = {}
 LIVE_GROUP_ID_TO_NAME: Dict[str, str] = {}
-
 all_online_names = sorted({name for day_groups in ONLINE_SCHEDULE.values() for _, name, _ in day_groups})
 for name in all_online_names:
     ONLINE_GROUP_ID_TO_NAME[make_short_id("o", name)] = name
-
 all_live_names = sorted({g["name"] for g in LIVE_GROUPS})
 for name in all_live_names:
     LIVE_GROUP_ID_TO_NAME[make_short_id("l", name)] = name
 
 
-# ==================== ПОИСК И РАСПИСАНИЯ ====================
 def get_searchable_cities(query: str) -> list:
     query_lower = query.lower().strip()
     is_spb_search = query_lower in ("санкт-петербург", "спб", "питер", "петербург")
     matched, seen = [], set()
-
     for g in LIVE_GROUPS:
         city = g["city"]
         city_lower = city.lower()
@@ -409,7 +504,6 @@ def get_searchable_cities(query: str) -> list:
             if city not in seen:
                 matched.append(city)
                 seen.add(city)
-
     if not matched and not is_spb_search:
         for g in LIVE_GROUPS:
             for suburb in SPB_SUBURBS:
@@ -420,16 +514,13 @@ def get_searchable_cities(query: str) -> list:
     return matched
 
 
-
 def week_of_month(dt):
     return ((dt.day - 1) // 7) + 1
-
 
 
 def is_last_weekday_of_month(dt):
     next_same = dt + timedelta(days=7)
     return next_same.month != dt.month
-
 
 
 def day_entry_matches_date(day_entry, target_date):
@@ -443,11 +534,34 @@ def day_entry_matches_date(day_entry, target_date):
     return week_of_month(target_date) == occurrence
 
 
+def normalize_city_name(city: str) -> str:
+    city = city.lower().strip()
+    aliases = {
+        "мск": "москва",
+        "москва": "москва",
+        "спб": "санкт-петербург",
+        "питер": "санкт-петербург",
+        "петербург": "санкт-петербург",
+        "санкт-петербург": "санкт-петербург",
+    }
+    return aliases.get(city, city)
+
 
 def get_live_groups_for_city(city: str):
-    city_lower = city.lower().strip()
-    return [g for g in LIVE_GROUPS if city_lower in g["city"].lower()]
-
+    city_norm = normalize_city_name(city)
+    result = []
+    for g in LIVE_GROUPS:
+        gcity = g["city"].lower().strip()
+        if city_norm == "москва":
+            if gcity == "москва" or gcity.startswith("москва,") or gcity.startswith("москва "):
+                result.append(g)
+        elif city_norm == "санкт-петербург":
+            if gcity == "санкт-петербург" or gcity.startswith("санкт-петербург,") or gcity.startswith("санкт-петербург "):
+                result.append(g)
+        else:
+            if city_norm in gcity:
+                result.append(g)
+    return result
 
 
 def get_live_groups_for_day(city: str, day_index: int):
@@ -462,13 +576,11 @@ def get_live_groups_for_day(city: str, day_index: int):
     return sorted(result, key=lambda x: x[2])
 
 
-
 def get_live_week(city: str):
     city_groups = get_live_groups_for_city(city)
     if not city_groups:
         return f"В городе «{escape_html(city)}» живых групп не найдено."
-
-    parts = [f"🏙 <b>Живые группы в {escape_html(city)}:</b>"]
+    parts = [f"<b>{escape_html(city)}</b>"]
     today = moscow_now().date()
     for offset in range(7):
         target_date = today + timedelta(days=offset)
@@ -479,15 +591,13 @@ def get_live_week(city: str):
                 if day_entry_matches_date(entry, target_date):
                     day_groups.append((g["name"], g["address"], entry["start"], entry["end"], entry.get("is_work_meeting", False)))
         if day_groups:
-            parts.append(f"<b>{day_name} ({target_date.strftime('%d.%m')}):</b>")
+            parts.append(f"\n<b>{day_name} ({target_date.strftime('%d.%m')})</b>")
             parts.extend(format_live_group(n, a, s, e, w) for n, a, s, e, w in sorted(day_groups, key=lambda x: x[2]))
     return "\n".join(parts)
 
 
-
 def get_online_by_day(day_index: int):
     return sorted(ONLINE_SCHEDULE.get(day_index, []), key=lambda x: x[0])
-
 
 
 def get_online_full():
@@ -495,13 +605,12 @@ def get_online_full():
     for i, day_name in enumerate(DAYS):
         groups = get_online_by_day(i)
         if groups:
-            lines = [f"<b>{day_name}:</b>"]
+            lines = [f"<b>{day_name}</b>"]
             lines.extend(format_online_group(t, n, u) for t, n, u in groups)
             parts.append("\n".join(lines))
     return "\n\n".join(parts) if parts else "Онлайн-групп нет."
 
 
-# ==================== ПОДПИСКИ HELPERS ====================
 def is_user_subscribed_to_online(user_data: dict, group_name: str) -> bool:
     return user_data.get("all_online", False) or group_name in user_data.get("groups", {})
 
@@ -510,15 +619,9 @@ def is_user_subscribed_to_live(user_data: dict, group_name: str) -> bool:
     return user_data.get("all_live", False) or group_name in user_data.get("groups", {})
 
 
-# ==================== УВЕДОМЛЕНИЯ ====================
 def get_today_online_subscriptions(user_data: dict):
     day_index = moscow_now().weekday()
-    groups = []
-    for time_str, name, url in get_online_by_day(day_index):
-        if is_user_subscribed_to_online(user_data, name):
-            groups.append((time_str, name, url))
-    return groups
-
+    return [(time_str, name, url) for time_str, name, url in get_online_by_day(day_index) if is_user_subscribed_to_online(user_data, name)]
 
 
 def get_today_live_subscriptions(user_data: dict):
@@ -526,79 +629,131 @@ def get_today_live_subscriptions(user_data: dict):
     if not city:
         return []
     day_index = moscow_now().weekday()
-    groups = []
-    for name, address, start, end, is_work_meeting in get_live_groups_for_day(city, day_index):
-        if is_user_subscribed_to_live(user_data, name):
-            groups.append((name, address, start, end, is_work_meeting))
-    return groups
-
+    return [
+        (name, address, start, end, is_work_meeting)
+        for name, address, start, end, is_work_meeting in get_live_groups_for_day(city, day_index)
+        if is_user_subscribed_to_live(user_data, name)
+    ]
 
 
 def build_daily_message(uid: str, user_data: dict) -> Optional[str]:
     day_index = moscow_now().weekday()
     online_groups = get_today_online_subscriptions(user_data)
     live_groups = get_today_live_subscriptions(user_data)
-
     if not online_groups and not live_groups:
         return None
-
-    parts = [f"☀ <b>Ваши группы на сегодня ({DAYS[day_index]}):</b>"]
+    parts = [f"☀ Доброе утро. Вот ваши группы на сегодня, <b>{DAYS[day_index]}</b>:"]
     if online_groups:
-        parts.append("\n<b>🌐 Онлайн:</b>")
+        parts.append("\n🌐 <b>Онлайн</b>")
         parts.extend(format_online_group_with_sub(t, n, u, uid) for t, n, u in online_groups)
     if live_groups:
-        parts.append("\n<b>🏙 Живые:</b>")
+        parts.append("\n🏙 <b>Живые</b>")
         parts.extend(format_live_group_with_sub(n, a, s, e, w, uid) for n, a, s, e, w in live_groups)
     return "\n".join(parts)
-
 
 
 def build_reminder_key(group_type: str, group_name: str, date_str: str, time_str: str) -> str:
     return f"{group_type}|{group_name}|{date_str}|{time_str}"
 
 
+def build_online_single_reminder(name: str, url: str, time_str: str) -> str:
+    return (
+        "Привет! Это бережное напоминание: через час начнётся онлайн-группа.\n\n"
+        f"🌐 <b>{escape_html(name)}</b>\n"
+        f"Начало: <b>{time_str}</b>\n"
+        f"Ссылка: <a href=\"{url}\">перейти в группу</a>\n\n"
+        "Возвращайтесь, программа работает"
+    )
+
+
+def build_online_multi_reminder(time_str: str, items: list[tuple[str, str]]) -> str:
+    text = [
+        "Привет! Это бережное напоминание: через час начнутся онлайн-группы.",
+        "",
+        f"Начало: <b>{time_str}</b>",
+        "",
+    ]
+    for name, url in sorted(items, key=lambda x: x[0].lower()):
+        text.append(f"• <a href=\"{url}\"><b>{escape_html(name)}</b></a>")
+    text.append("")
+    text.append("Возвращайтесь, программа работает")
+    return "\n".join(text)
+
+
+def build_live_single_reminder(name: str, address: str, start: str, is_work_meeting: bool) -> str:
+    label = " 🔧" if is_work_meeting else ""
+    return (
+        "Привет! Это бережное напоминание: через час начнётся живая группа.\n\n"
+        f"🏙 <b>{escape_html(name)}</b>{label}\n"
+        f"Адрес: {escape_html(address)}\n"
+        f"Начало: <b>{start}</b>\n\n"
+        "Возвращайтесь, программа работает"
+    )
+
+
+def build_live_multi_reminder(start: str, items: list[tuple[str, str, bool]]) -> str:
+    text = [
+        "Привет! Это бережное напоминание: через час начнутся живые группы.",
+        "",
+        f"Начало: <b>{start}</b>",
+        "",
+    ]
+    for name, address, is_work_meeting in sorted(items, key=lambda x: x[0].lower()):
+        label = " 🔧" if is_work_meeting else ""
+        text.append(f"• <b>{escape_html(name)}</b>{label} — {escape_html(address)}")
+    text.append("")
+    text.append("Возвращайтесь, программа работает")
+    return "\n".join(text)
+
 
 def collect_due_reminders(user_data: dict, now_dt: datetime):
     due = []
     today_str = now_dt.strftime("%Y-%m-%d")
     now_minutes = now_dt.hour * 60 + now_dt.minute
-    groups = user_data.get("groups", {})
     reminders_meta = user_data.setdefault("meta", {}).setdefault("last_reminders", {})
 
+    online_due_by_time: Dict[str, list[tuple[str, str]]] = {}
     for time_str, name, url in get_online_by_day(now_dt.weekday()):
         if not is_user_subscribed_to_online(user_data, name):
             continue
-        start_minutes = time_to_minutes(time_str)
-        if start_minutes - now_minutes == 60:
+        if time_to_minutes(time_str) - now_minutes == 60:
             key = build_reminder_key("online", name, today_str, time_str)
             if reminders_meta.get(key) != today_str:
-                text = (
-                    f"🔔 <b>Напоминание за час</b>\n\n"
-                    f"🌐 <b>{escape_html(name)}</b>\n"
-                    f"Начало: <b>{time_str}</b>\n"
-                    f"Ссылка: <a href=\"{url}\">перейти в группу</a>"
-                )
-                due.append((key, text, True))
+                online_due_by_time.setdefault(time_str, []).append((name, url))
+
+    for time_str, items in sorted(online_due_by_time.items()):
+        if len(items) == 1:
+            name, url = items[0]
+            text = build_online_single_reminder(name, url, time_str)
+            due.append((build_reminder_key("online", name, today_str, time_str), text, True))
+        else:
+            composite_key = build_reminder_key("online_multi", "|".join(sorted(name for name, _ in items)), today_str, time_str)
+            if reminders_meta.get(composite_key) != today_str:
+                text = build_online_multi_reminder(time_str, items)
+                due.append((composite_key, text, True))
 
     city = user_data.get("city")
     if city:
+        live_due_by_time: Dict[str, list[tuple[str, str, bool]]] = {}
         for name, address, start, end, is_work_meeting in get_live_groups_for_day(city, now_dt.weekday()):
             if not is_user_subscribed_to_live(user_data, name):
                 continue
-            start_minutes = time_to_minutes(start)
-            if start_minutes - now_minutes == 60:
+            if time_to_minutes(start) - now_minutes == 60:
                 key = build_reminder_key("live", name, today_str, start)
                 if reminders_meta.get(key) != today_str:
-                    label = " 🔧" if is_work_meeting else ""
-                    text = (
-                        f"🔔 <b>Напоминание за час</b>\n\n"
-                        f"🏙 <b>{escape_html(name)}</b>{label}\n"
-                        f"Адрес: {escape_html(address)}\n"
-                        f"Начало: <b>{start}</b>"
-                    )
-                    due.append((key, text, False))
-    return due
+                    live_due_by_time.setdefault(start, []).append((name, address, is_work_meeting))
 
+        for start, items in sorted(live_due_by_time.items()):
+            if len(items) == 1:
+                name, address, is_work_meeting = items[0]
+                text = build_live_single_reminder(name, address, start, is_work_meeting)
+                due.append((build_reminder_key("live", name, today_str, start), text, False))
+            else:
+                composite_key = build_reminder_key("live_multi", "|".join(sorted(name for name, _, _ in items)), today_str, start)
+                if reminders_meta.get(composite_key) != today_str:
+                    text = build_live_multi_reminder(start, items)
+                    due.append((composite_key, text, False))
+    return due
 
 
 def cleanup_old_reminders(user_data: dict, now_dt: datetime):
@@ -614,7 +769,6 @@ async def send_daily_notifications(bot: Bot, now_dt: datetime):
     subs = load_subscribers()
     today_str = now_dt.strftime("%Y-%m-%d")
     changed = False
-
     for uid, raw_data in subs.items():
         data = normalize_user_sub(raw_data)
         if not data.get("groups"):
@@ -623,12 +777,10 @@ async def send_daily_notifications(bot: Bot, now_dt: datetime):
         if data.setdefault("meta", {}).get("last_daily_sent") == today_str:
             subs[uid] = data
             continue
-
         message_text = build_daily_message(uid, data)
         if not message_text:
             subs[uid] = data
             continue
-
         try:
             await bot.send_message(int(uid), message_text, parse_mode="HTML", disable_web_page_preview=True)
             data["meta"]["last_daily_sent"] = today_str
@@ -636,7 +788,6 @@ async def send_daily_notifications(bot: Bot, now_dt: datetime):
         except Exception as e:
             print(f"❌ Не удалось отправить daily пользователю {uid}: {e}")
         subs[uid] = data
-
     if changed:
         save_subscribers(subs)
 
@@ -644,16 +795,13 @@ async def send_daily_notifications(bot: Bot, now_dt: datetime):
 async def send_hourly_reminders(bot: Bot, now_dt: datetime):
     subs = load_subscribers()
     changed = False
-
     for uid, raw_data in subs.items():
         data = normalize_user_sub(raw_data)
         cleanup_old_reminders(data, now_dt)
         due_reminders = collect_due_reminders(data, now_dt)
-
         if not due_reminders:
             subs[uid] = data
             continue
-
         for key, text, disable_preview in due_reminders:
             try:
                 await bot.send_message(int(uid), text, parse_mode="HTML", disable_web_page_preview=disable_preview)
@@ -662,7 +810,6 @@ async def send_hourly_reminders(bot: Bot, now_dt: datetime):
             except Exception as e:
                 print(f"❌ Не удалось отправить reminder пользователю {uid}: {e}")
         subs[uid] = data
-
     if changed:
         save_subscribers(subs)
 
@@ -680,7 +827,6 @@ async def notifications_worker(bot: Bot):
         await asyncio.sleep(CHECK_INTERVAL_SECONDS)
 
 
-# ==================== КЛАВИАТУРЫ ====================
 def online_menu_keyboard():
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -691,7 +837,6 @@ def online_menu_keyboard():
     return builder.as_markup()
 
 
-
 def live_city_keyboard():
     builder = InlineKeyboardBuilder()
     for city in POPULAR_CITIES:
@@ -700,7 +845,6 @@ def live_city_keyboard():
     builder.adjust(2)
     builder.row(InlineKeyboardButton(text="🔍 Найти свой город", callback_data="live_search_city"))
     return builder.as_markup()
-
 
 
 def live_period_keyboard(city: str):
@@ -715,7 +859,6 @@ def live_period_keyboard(city: str):
     return builder.as_markup()
 
 
-
 def get_days_keyboard(prefix: str, back_callback: Optional[str] = None) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for i, day_name in enumerate(DAYS):
@@ -726,7 +869,6 @@ def get_days_keyboard(prefix: str, back_callback: Optional[str] = None) -> Inlin
     return builder.as_markup()
 
 
-# ==================== ДИСПЕТЧЕР ====================
 dp = Dispatcher(storage=MemoryStorage())
 
 
@@ -734,8 +876,7 @@ async def show_sub_main(target: CallbackQuery | Message):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🌐 Онлайн-группы", callback_data="sub_online"))
     builder.row(InlineKeyboardButton(text="🏙 Живые группы", callback_data="sub_live"))
-    text = "🔔 <b>Подписка</b>\n\nВыберите тип групп:"
-
+    text = "<b>Подписка</b>\n\nВыберите тип групп:"
     if isinstance(target, CallbackQuery):
         await safe_edit_text(target.message, text, parse_mode="HTML", reply_markup=builder.as_markup())
         await safe_callback_answer(target)
@@ -747,22 +888,14 @@ async def show_sub_online_list(callback: CallbackQuery):
     uid = str(callback.from_user.id)
     data = get_user_sub(uid)
     builder = InlineKeyboardBuilder()
-
     all_online_prefix = "🔔" if data.get("all_online") else "🔕"
     builder.row(InlineKeyboardButton(text=f"{all_online_prefix} Все онлайн", callback_data="sub_toggle_online_all"))
-
     for gid, name in sorted(ONLINE_GROUP_ID_TO_NAME.items(), key=lambda x: x[1]):
         subbed = is_user_subscribed_to_online(data, name)
         prefix = "🔔" if subbed else "🔕"
         builder.row(InlineKeyboardButton(text=f"{prefix} {name}", callback_data=f"sub_toggle_online_{gid}"))
-
     builder.row(InlineKeyboardButton(text="← Назад", callback_data="sub_main_back"))
-    await safe_edit_text(
-        callback.message,
-        "🌐 <b>Онлайн-группы</b>\n\n🔔 — подписаны\n🔕 — не подписаны",
-        parse_mode="HTML",
-        reply_markup=builder.as_markup(),
-    )
+    await safe_edit_text(callback.message, "🌐 Онлайн-группы\n\n🔔 — подписаны\n🔕 — не подписаны", parse_mode="HTML", reply_markup=builder.as_markup())
     await safe_callback_answer(callback)
 
 
@@ -775,7 +908,6 @@ async def show_sub_live_city_selector(target: CallbackQuery | Message):
     builder.row(InlineKeyboardButton(text="🔍 Найти", callback_data="sub_live_city_search"))
     builder.row(InlineKeyboardButton(text="← Назад", callback_data="sub_main_back"))
     text = "🏙 Выберите город для подписки на живые группы:"
-
     if isinstance(target, CallbackQuery):
         await safe_edit_text(target.message, text, reply_markup=builder.as_markup())
         await safe_callback_answer(target)
@@ -787,22 +919,17 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str):
     uid = str(target.from_user.id)
     data = get_user_sub(uid)
     builder = InlineKeyboardBuilder()
-
     city_group_names = sorted({g["name"] for g in get_live_groups_for_city(city)})
     all_live_prefix = "🔔" if data.get("all_live") else "🔕"
     builder.row(InlineKeyboardButton(text=f"{all_live_prefix} Все живые в своём городе", callback_data="sub_toggle_live_all"))
-
     for name in city_group_names:
         gid = make_short_id("l", name)
         subbed = is_user_subscribed_to_live(data, name)
         prefix = "🔔" if subbed else "🔕"
         builder.row(InlineKeyboardButton(text=f"{prefix} {name}", callback_data=f"sub_toggle_live_{gid}"))
-
     builder.row(InlineKeyboardButton(text="🏙 Сменить город", callback_data="sub_live_city_change"))
     builder.row(InlineKeyboardButton(text="← Назад", callback_data="sub_main_back"))
-
-    text = f"🏙 <b>Живые группы в {escape_html(city)}</b>\n\n🔔 — подписаны\n🔕 — не подписаны"
-
+    text = f"🏙 Живые группы в {escape_html(city)}\n\n🔔 — подписаны\n🔕 — не подписаны"
     if isinstance(target, CallbackQuery):
         await safe_edit_text(target.message, text, parse_mode="HTML", reply_markup=builder.as_markup())
         await safe_callback_answer(target)
@@ -810,23 +937,15 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str):
         await target.answer(text, parse_mode="HTML", reply_markup=builder.as_markup())
 
 
-# ==================== ХЭНДЛЕРЫ ====================
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
-    await message.answer("🕊 <b>Добро пожаловать в бот ВДА!</b>", parse_mode="HTML", reply_markup=reply_main_menu)
+    await message.answer("<b>Здравствуйте!</b>\n\nВыберите раздел в меню ниже.", parse_mode="HTML", reply_markup=reply_main_menu)
 
 
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
     await message.answer(
-        "ℹ️ <b>Бот ВДА</b>\n\n"
-        "🌐 Онлайн — онлайн-группы\n"
-        "🏙 Живые — очные собрания\n"
-        "💫 Установка — аффирмация\n"
-        "🔔 Подписка — уведомления\n"
-        "⭐ Мои группы — подписки\n"
-        "🔕 Отписаться — отключить\n\n"
-        "/start /help /slogan",
+        "<b>Команды</b>\n\n/start — главное меню\n/help — помощь\n/slogan — случайная фраза поддержки",
         parse_mode="HTML",
         reply_markup=reply_main_menu,
     )
@@ -835,23 +954,23 @@ async def cmd_help(message: Message):
 @dp.message(Command("slogan"))
 async def cmd_slogan(message: Message):
     slogan = random.choice(SLOGANS_AND_AFFIRMATIONS)
-    await message.answer(f"💫 <b>Установка:</b>\n\n<i>«{escape_html(slogan)}»</i>", parse_mode="HTML")
+    await message.answer(f"<b>Фраза поддержки:</b>\n<i>{escape_html(slogan)}</i>", parse_mode="HTML")
 
 
 @dp.message(F.text == "🌐 Онлайн")
 async def btn_online(message: Message):
-    await message.answer("🌐 <b>Онлайн-расписание</b>", parse_mode="HTML", reply_markup=online_menu_keyboard())
+    await message.answer("🌐 Онлайн-расписание", parse_mode="HTML", reply_markup=online_menu_keyboard())
 
 
 @dp.message(F.text == "🏙 Живые")
 async def btn_live(message: Message):
-    await message.answer("🏙 <b>Выберите город:</b>", parse_mode="HTML", reply_markup=live_city_keyboard())
+    await message.answer("🏙 Выберите город:", parse_mode="HTML", reply_markup=live_city_keyboard())
 
 
 @dp.message(F.text == "💫 Установка")
 async def btn_slogan(message: Message):
     slogan = random.choice(SLOGANS_AND_AFFIRMATIONS)
-    await message.answer(f"💫 <b>Установка на день:</b>\n\n<i>«{escape_html(slogan)}»</i>", parse_mode="HTML")
+    await message.answer(f"<b>Установка</b>\n<i>{escape_html(slogan)}</i>", parse_mode="HTML")
 
 
 @dp.message(F.text == "🔔 Подписка")
@@ -880,10 +999,8 @@ async def sub_live_city_search(callback: CallbackQuery, state: FSMContext):
     await state.set_state(SubCitySearch.waiting_for_city)
     await safe_edit_text(
         callback.message,
-        "🔍 Введите название города:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="← Назад", callback_data="sub_live")]
-        ])
+        "Введите город для подписки:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data="sub_live")]]),
     )
     await safe_callback_answer(callback)
 
@@ -893,17 +1010,15 @@ async def sub_live_city_input(message: Message, state: FSMContext):
     query = message.text.strip()
     matched = get_searchable_cities(query)
     await state.clear()
-
     if not matched:
         await message.answer("Город не найден.")
         return
-
     city = matched[0]
     uid = str(message.from_user.id)
     data = get_user_sub(uid)
     data["city"] = city
     set_user_sub(uid, data)
-    await message.answer(f"✅ Город: <b>{escape_html(city)}</b>", parse_mode="HTML")
+    await message.answer(f"Выбран город: <b>{escape_html(city)}</b>", parse_mode="HTML")
     await show_sub_live_list(message, city)
 
 
@@ -929,20 +1044,7 @@ async def sub_toggle_online_all(callback: CallbackQuery):
     data = get_user_sub(uid)
     data["all_online"] = not data.get("all_online", False)
     set_user_sub(uid, data)
-
-    await safe_callback_answer(callback, f"{'Включили' if data['all_online'] else 'Выключили'} все онлайн")
-
-    if data["all_online"]:
-        await callback.message.answer(
-            "🔔 <b>Вы подписались на все онлайн-группы!</b>\n\n☀ Утром в 7:00 — расписание\n🔔 За час — напоминание",
-            parse_mode="HTML",
-        )
-    else:
-        await callback.message.answer(
-            "🔕 <b>Подписка на все онлайн-группы отключена</b>",
-            parse_mode="HTML",
-        )
-
+    await safe_callback_answer(callback, "Готово")
     await show_sub_online_list(callback)
 
 
@@ -953,42 +1055,23 @@ async def sub_toggle_online(callback: CallbackQuery):
     uid = str(callback.from_user.id)
     data = get_user_sub(uid)
     groups = data.setdefault("groups", {})
-
     if not group_name:
-        await safe_callback_answer(callback, "Ошибка ID группы")
+        await safe_callback_answer(callback, "Ошибка ID")
         return
-
     if group_name in groups:
         del groups[group_name]
-        added = False
     else:
         info = {}
         for day_groups in ONLINE_SCHEDULE.values():
-            found = False
             for _, n, u in day_groups:
                 if n == group_name:
                     info = {"url": u}
-                    found = True
                     break
-            if found:
+            if info:
                 break
         groups[group_name] = {"type": "online", "info": info}
-        added = True
-
     set_user_sub(uid, data)
-    await safe_callback_answer(callback, f"{'Подписались' if added else 'Отписались'} на {group_name}")
-
-    if added:
-        await callback.message.answer(
-            f"🔔 <b>Вы подписались!</b>\n\n🌐 <b>{escape_html(group_name)}</b>\n\n☀ Утром в 7:00 — расписание\n🔔 За час — напоминание",
-            parse_mode="HTML",
-        )
-    else:
-        await callback.message.answer(
-            f"🔕 <b>Вы отписались</b> от 🌐 <b>{escape_html(group_name)}</b>",
-            parse_mode="HTML",
-        )
-
+    await safe_callback_answer(callback, "Готово")
     await show_sub_online_list(callback)
 
 
@@ -997,28 +1080,13 @@ async def sub_toggle_live_all(callback: CallbackQuery):
     uid = str(callback.from_user.id)
     data = get_user_sub(uid)
     city = data.get("city")
-
     if not city:
         await safe_callback_answer(callback, "Сначала выберите город")
         await show_sub_live_city_selector(callback)
         return
-
     data["all_live"] = not data.get("all_live", False)
     set_user_sub(uid, data)
-
-    await safe_callback_answer(callback, f"{'Включили' if data['all_live'] else 'Выключили'} все живые в {city}")
-
-    if data["all_live"]:
-        await callback.message.answer(
-            f"🔔 <b>Вы подписались на все живые группы в {escape_html(city)}!</b>\n\n☀ Утром в 7:00 — расписание\n🔔 За час — напоминание",
-            parse_mode="HTML",
-        )
-    else:
-        await callback.message.answer(
-            f"🔕 <b>Подписка на все живые группы в {escape_html(city)} отключена</b>",
-            parse_mode="HTML",
-        )
-
+    await safe_callback_answer(callback, "Готово")
     await show_sub_live_list(callback, city)
 
 
@@ -1029,14 +1097,11 @@ async def sub_toggle_live(callback: CallbackQuery):
     uid = str(callback.from_user.id)
     data = get_user_sub(uid)
     groups = data.setdefault("groups", {})
-
     if not group_name:
-        await safe_callback_answer(callback, "Ошибка ID группы")
+        await safe_callback_answer(callback, "Ошибка ID")
         return
-
     if group_name in groups:
         del groups[group_name]
-        added = False
     else:
         info = {}
         for g in LIVE_GROUPS:
@@ -1044,22 +1109,8 @@ async def sub_toggle_live(callback: CallbackQuery):
                 info = {"city": g["city"], "address": g["address"]}
                 break
         groups[group_name] = {"type": "live", "info": info}
-        added = True
-
     set_user_sub(uid, data)
-    await safe_callback_answer(callback, f"{'Подписались' if added else 'Отписались'} на {group_name}")
-
-    if added:
-        await callback.message.answer(
-            f"🔔 <b>Вы подписались!</b>\n\n🏙 <b>{escape_html(group_name)}</b>\n\n☀ Утром в 7:00 — расписание\n🔔 За час — напоминание",
-            parse_mode="HTML",
-        )
-    else:
-        await callback.message.answer(
-            f"🔕 <b>Вы отписались</b> от 🏙 <b>{escape_html(group_name)}</b>",
-            parse_mode="HTML",
-        )
-
+    await safe_callback_answer(callback, "Готово")
     city = data.get("city")
     if city:
         await show_sub_live_list(callback, city)
@@ -1076,18 +1127,17 @@ async def sub_main_back(callback: CallbackQuery):
 async def btn_my_groups(message: Message):
     uid = str(message.from_user.id)
     data = get_user_sub(uid)
-    text = "⭐ <b>Мои подписки</b>\n\n"
+    text = "<b>Мои группы</b>"
     specifics = data.get("groups", {})
-
     if specifics:
-        text += "<b>Группы:</b>\n"
+        text += "\n\n"
         for name, gdata in specifics.items():
             emoji = "🌐" if gdata.get("type") == "online" else "🏙"
-            text += f"🔔 {emoji} {escape_html(name)}\n"
-        text += "\n<i>Нажмите на группу в подписке, чтобы отписаться</i>"
+            text += f"{emoji} {escape_html(name)}\n"
+        if data.get("city"):
+            text += f"\n<i>Город для живых групп: {escape_html(data['city'])}</i>"
     else:
-        text += "Нет активных подписок.\nНажмите «🔔 Подписка»."
-
+        text += "\n\nПодписок пока нет."
     await message.answer(text, parse_mode="HTML", reply_markup=reply_main_menu)
 
 
@@ -1103,15 +1153,9 @@ async def online_today(callback: CallbackQuery):
     day_index = moscow_now().weekday()
     groups = get_online_by_day(day_index)
     uid = str(callback.from_user.id)
-    text = f"📅 <b>Онлайн сегодня ({DAYS[day_index]}):</b>\n\n"
+    text = f"📅 Онлайн сегодня (<b>{DAYS[day_index]}</b>):\n\n"
     text += "\n".join(format_online_group_with_sub(t, n, u, uid) for t, n, u in groups) if groups else "Нет групп."
-    await safe_edit_text(
-        callback.message,
-        text,
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data="mode_online")]]),
-    )
+    await safe_edit_text(callback.message, text, parse_mode="HTML", disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data="mode_online")]]))
     await safe_callback_answer(callback)
 
 
@@ -1137,21 +1181,15 @@ async def online_show_day(callback: CallbackQuery):
     day_index = int(callback.data.split("_")[-1])
     groups = get_online_by_day(day_index)
     uid = str(callback.from_user.id)
-    text = f"📅 <b>Онлайн — {DAYS[day_index]}:</b>\n\n"
+    text = f"📅 Онлайн — <b>{DAYS[day_index]}</b>:\n\n"
     text += "\n".join(format_online_group_with_sub(t, n, u, uid) for t, n, u in groups) if groups else "Нет групп."
-    await safe_edit_text(
-        callback.message,
-        text,
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data="online_choose_day")]]),
-    )
+    await safe_edit_text(callback.message, text, parse_mode="HTML", disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data="online_choose_day")]]))
     await safe_callback_answer(callback)
 
 
 @dp.callback_query(F.data == "mode_online")
 async def back_to_online_menu(callback: CallbackQuery):
-    await safe_edit_text(callback.message, "🌐 <b>Онлайн-расписание</b>", parse_mode="HTML", reply_markup=online_menu_keyboard())
+    await safe_edit_text(callback.message, "🌐 Онлайн-расписание", parse_mode="HTML", reply_markup=online_menu_keyboard())
     await safe_callback_answer(callback)
 
 
@@ -1159,18 +1197,13 @@ async def back_to_online_menu(callback: CallbackQuery):
 async def process_city(callback: CallbackQuery):
     cid = callback.data[len("live_city_"):]
     city = id_to_city.get(cid, cid)
-    await safe_edit_text(
-        callback.message,
-        f"🏙 <b>{escape_html(city)}</b>\nВыберите:",
-        parse_mode="HTML",
-        reply_markup=live_period_keyboard(city),
-    )
+    await safe_edit_text(callback.message, f"🏙 <b>{escape_html(city)}</b>\nВыберите:", parse_mode="HTML", reply_markup=live_period_keyboard(city))
     await safe_callback_answer(callback)
 
 
 @dp.callback_query(F.data == "mode_live")
 async def back_to_live(callback: CallbackQuery):
-    await safe_edit_text(callback.message, "🏙 <b>Выберите город:</b>", parse_mode="HTML", reply_markup=live_city_keyboard())
+    await safe_edit_text(callback.message, "🏙 Выберите город:", parse_mode="HTML", reply_markup=live_city_keyboard())
     await safe_callback_answer(callback)
 
 
@@ -1181,14 +1214,9 @@ async def live_today(callback: CallbackQuery):
     day_index = moscow_now().weekday()
     groups = get_live_groups_for_day(city, day_index)
     uid = str(callback.from_user.id)
-    text = f"📅 <b>{escape_html(city)} сегодня ({DAYS[day_index]}):</b>\n\n"
+    text = f"📅 {escape_html(city)} сегодня (<b>{DAYS[day_index]}</b>):\n\n"
     text += "\n".join(format_live_group_with_sub(n, a, s, e, w, uid) for n, a, s, e, w in groups) if groups else "Нет групп."
-    await safe_edit_text(
-        callback.message,
-        text,
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data=f"live_period_{cid}")]]),
-    )
+    await safe_edit_text(callback.message, text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data=f"live_period_{cid}")]]))
     await safe_callback_answer(callback)
 
 
@@ -1196,12 +1224,7 @@ async def live_today(callback: CallbackQuery):
 async def live_week(callback: CallbackQuery):
     cid = callback.data[len("live_week_"):]
     city = id_to_city.get(cid, cid)
-    await safe_edit_text(
-        callback.message,
-        get_live_week(city),
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data=f"live_period_{cid}")]]),
-    )
+    await safe_edit_text(callback.message, get_live_week(city), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data=f"live_period_{cid}")]]))
     await safe_callback_answer(callback)
 
 
@@ -1209,12 +1232,7 @@ async def live_week(callback: CallbackQuery):
 async def live_period_back(callback: CallbackQuery):
     cid = callback.data[len("live_period_"):]
     city = id_to_city.get(cid, cid)
-    await safe_edit_text(
-        callback.message,
-        f"🏙 <b>{escape_html(city)}</b>\nВыберите:",
-        parse_mode="HTML",
-        reply_markup=live_period_keyboard(city),
-    )
+    await safe_edit_text(callback.message, f"🏙 <b>{escape_html(city)}</b>\nВыберите:", parse_mode="HTML", reply_markup=live_period_keyboard(city))
     await safe_callback_answer(callback)
 
 
@@ -1222,11 +1240,7 @@ async def live_period_back(callback: CallbackQuery):
 async def live_choose_day(callback: CallbackQuery):
     cid = callback.data[len("live_choose_day_"):]
     city = id_to_city.get(cid, cid)
-    await safe_edit_text(
-        callback.message,
-        f"📆 {escape_html(city)}:",
-        reply_markup=get_days_keyboard(f"live_day_{cid}_", back_callback=f"live_period_{cid}"),
-    )
+    await safe_edit_text(callback.message, f"📆 {escape_html(city)}:", reply_markup=get_days_keyboard(f"live_day_{cid}_", back_callback=f"live_period_{cid}"))
     await safe_callback_answer(callback)
 
 
@@ -1239,25 +1253,16 @@ async def live_show_day(callback: CallbackQuery):
     day_index = int(idx_str)
     groups = get_live_groups_for_day(city, day_index)
     uid = str(callback.from_user.id)
-    text = f"📅 <b>{escape_html(city)} — {DAYS[day_index]}:</b>\n\n"
+    text = f"📅 {escape_html(city)} — <b>{DAYS[day_index]}</b>:\n\n"
     text += "\n".join(format_live_group_with_sub(n, a, s, e, w, uid) for n, a, s, e, w in groups) if groups else "Нет групп."
-    await safe_edit_text(
-        callback.message,
-        text,
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data=f"live_choose_day_{cid}")]]),
-    )
+    await safe_edit_text(callback.message, text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data=f"live_choose_day_{cid}")]]))
     await safe_callback_answer(callback)
 
 
 @dp.callback_query(F.data == "live_search_city")
 async def live_search_city_start(callback: CallbackQuery, state: FSMContext):
     await state.set_state(LiveGroupSearch.waiting_for_city)
-    await safe_edit_text(
-        callback.message,
-        "🔍 Введите город:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data="mode_live")]]),
-    )
+    await safe_edit_text(callback.message, "🔍 Введите город:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data="mode_live")]]))
     await safe_callback_answer(callback)
 
 
@@ -1266,11 +1271,9 @@ async def live_search_city_handle(message: Message, state: FSMContext):
     query = message.text.strip()
     matched = get_searchable_cities(query)
     await state.clear()
-
     if not matched:
         await message.answer("Город не найден.", reply_markup=reply_main_menu)
         return
-
     if len(matched) == 1:
         city = matched[0]
         await message.answer(f"🏙 <b>{escape_html(city)}</b>\nВыберите:", parse_mode="HTML", reply_markup=live_period_keyboard(city))
@@ -1292,12 +1295,10 @@ async def fallback(message: Message, state: FSMContext):
     await message.answer("Используйте кнопки меню 👇", reply_markup=reply_main_menu)
 
 
-# ==================== ЗАПУСК ====================
 async def main():
     if not BOT_TOKEN:
         print("❌ BOT_TOKEN не задан")
         return
-
     bot = Bot(token=BOT_TOKEN)
     asyncio.create_task(notifications_worker(bot))
     print("✅ Бот запущен")
