@@ -320,17 +320,29 @@ def format_online_group_with_sub(time_str: str, name: str, url: str, uid: str) -
     return f'🟠 <b>{time_str}</b> — <a href="{url}">{escape_html(name)}</a>{bell}'
 
 
-def format_live_group(name: str, address: str, start: str, end: str, is_work_meeting: bool = False) -> str:
+def format_live_group(
+    name: str,
+    address: str,
+    start: str,
+    end: str,
+    is_work_meeting: bool = False,
+) -> str:
     label = " 🔧" if is_work_meeting else ""
-    return f"• <b>{escape_html(name)}</b>{label} — {escape_html(address)} ({start}–{end})"
+    return f"• {start}–{end} — {escape_html(name)}{label} — {escape_html(address)}"
 
 
-def format_live_group_with_sub(name: str, address: str, start: str, end: str, is_work_meeting: bool, uid: str) -> str:
+def format_live_group_with_sub(
+    name: str,
+    address: str,
+    start: str,
+    end: str,
+    is_work_meeting: bool,
+    uid: str,
+) -> str:
     label = " 🔧" if is_work_meeting else ""
     data = get_user_sub(uid)
     bell = " 🔔" if data.get("all_live") or name in data.get("groups", {}) else ""
-    return f"• <b>{escape_html(name)}</b>{label}{bell} — {escape_html(address)} ({start}–{end})"
-
+    return f"• {start}–{end} — {escape_html(name)}{label}{bell} — {escape_html(address)}"
 
 async def safe_callback_answer(callback: CallbackQuery, text: str = ""):
     try:
@@ -576,23 +588,47 @@ def get_live_groups_for_day(city: str, day_index: int):
     return sorted(result, key=lambda x: x[2])
 
 
-def get_live_week(city: str):
+def get_live_week(city: str) -> str:
     city_groups = get_live_groups_for_city(city)
     if not city_groups:
         return f"В городе «{escape_html(city)}» живых групп не найдено."
-    parts = [f"<b>{escape_html(city)}</b>"]
+
+    parts: List[str] = [f"🏙 Живые группы в {escape_html(city)}:"]
     today = moscow_now().date()
+    # Понедельник текущей недели
+    monday = today - timedelta(days=today.weekday())
+
     for offset in range(7):
-        target_date = today + timedelta(days=offset)
+        target_date = monday + timedelta(days=offset)
         day_name = DAYS[target_date.weekday()]
-        day_groups = []
+
+        # set для устранения технических дублей из парсера
+        day_set = set()
         for g in city_groups:
             for entry in g["days"]:
                 if day_entry_matches_date(entry, target_date):
-                    day_groups.append((g["name"], g["address"], entry["start"], entry["end"], entry.get("is_work_meeting", False)))
-        if day_groups:
-            parts.append(f"\n<b>{day_name} ({target_date.strftime('%d.%m')})</b>")
-            parts.extend(format_live_group(n, a, s, e, w) for n, a, s, e, w in sorted(day_groups, key=lambda x: x[2]))
+                    key = (
+                        g["name"],
+                        g["address"],
+                        entry["start"],
+                        entry["end"],
+                        entry.get("is_work_meeting", False),
+                    )
+                    day_set.add(key)
+
+        if day_set:
+            parts.append(f"{day_name} ({target_date.strftime('%d.%m')}):")
+            for name, address, start, end, is_work_meeting in sorted(day_set, key=lambda x: x[2]):
+                parts.append(
+                    format_live_group(
+                        name=name,
+                        address=address,
+                        start=start,
+                        end=end,
+                        is_work_meeting=is_work_meeting,
+                    )
+                )
+
     return "\n".join(parts)
 
 
