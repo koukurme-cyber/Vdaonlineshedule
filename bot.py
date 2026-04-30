@@ -1224,7 +1224,22 @@ async def live_today(callback: CallbackQuery):
 async def live_week(callback: CallbackQuery):
     cid = callback.data[len("live_week_"):]
     city = id_to_city.get(cid, cid)
-    await safe_edit_text(callback.message, get_live_week(city), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data=f"live_period_{cid}")]]))
+
+    full_text = get_live_week(city)
+    parts = split_long_message(full_text)
+
+    await safe_edit_text(callback.message, "📋 Расписание на неделю:", parse_mode="HTML")
+
+    for idx, part in enumerate(parts):
+        kb = None
+        if idx == len(parts) - 1:
+            kb = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="← Назад", callback_data=f"live_period_{cid}")]
+                ]
+            )
+        await callback.message.answer(part, parse_mode="HTML", reply_markup=kb)
+
     await safe_callback_answer(callback)
 
 
