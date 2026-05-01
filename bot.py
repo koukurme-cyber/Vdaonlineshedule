@@ -600,9 +600,10 @@ def get_searchable_cities(query: str) -> list:
                     if g["city"] not in seen:
                         matched.append(g["city"])
                         seen.add(g["city"])
-    return matched
-	
-	def week_of_month(dt):
+       return matched
+
+
+def week_of_month(dt):
     return ((dt.day - 1) // 7) + 1
 
 
