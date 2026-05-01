@@ -1004,13 +1004,24 @@ def main_menu_inline_keyboard():
 dp = Dispatcher(storage=MemoryStorage())
 
 
+@dp.message(Command("start"))
+async def cmd_start(message: Message):
+    # Постоянная клавиатура
+    await message.answer(
+        "Добро пожаловать! Используйте кнопки ниже или меню в сообщении.",
+        reply_markup=reply_main_menu
+    )
+    # Инлайн‑меню
+    await message.answer(
+        "🏠 Главное меню\n\nВыберите раздел:",
+        reply_markup=main_menu_inline_keyboard()
+    )
+
+
 @dp.callback_query(F.data == "main_menu")
 async def main_menu_callback(callback: CallbackQuery):
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass
-    await callback.message.answer(
+    await safe_edit_text(
+        callback.message,
         "🏠 Главное меню\n\nВыберите раздел:",
         reply_markup=main_menu_inline_keyboard()
     )
@@ -1019,11 +1030,8 @@ async def main_menu_callback(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "main_online")
 async def main_online(callback: CallbackQuery):
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass
-    await callback.message.answer(
+    await safe_edit_text(
+        callback.message,
         "🌐 Онлайн-расписание",
         parse_mode="HTML",
         reply_markup=online_menu_keyboard()
@@ -1033,11 +1041,8 @@ async def main_online(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "main_live")
 async def main_live(callback: CallbackQuery):
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass
-    await callback.message.answer(
+    await safe_edit_text(
+        callback.message,
         "🏙 Выберите город:",
         parse_mode="HTML",
         reply_markup=live_city_keyboard()
@@ -1047,12 +1052,9 @@ async def main_live(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "main_slogan")
 async def main_slogan(callback: CallbackQuery):
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass
     slogan = random.choice(SLOGANS_AND_AFFIRMATIONS)
-    await callback.message.answer(
+    await safe_edit_text(
+        callback.message,
         f"<b>Установка</b>\n<i>{escape_html(slogan)}</i>",
         parse_mode="HTML",
         reply_markup=back_markup("⬅️ Главное меню", "main_menu")
@@ -1062,30 +1064,11 @@ async def main_slogan(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "main_sub")
 async def main_sub(callback: CallbackQuery):
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🌐 Онлайн-группы", callback_data="sub_online"))
-    builder.row(InlineKeyboardButton(text="🏙 Живые группы", callback_data="sub_live"))
-    builder.row(InlineKeyboardButton(text="🌐 Уведомления для онлайн", callback_data="sub_settings_online"))
-    builder.row(InlineKeyboardButton(text="🏙 Уведомления для живых", callback_data="sub_settings_live"))
-    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="main_menu"))
-    await callback.message.answer(
-        "<b>Подписка</b>\n\nВыберите тип групп или настройки:",
-        parse_mode="HTML",
-        reply_markup=builder.as_markup()
-    )
-    await safe_callback_answer(callback)
+    await show_sub_main(callback)
 
 
 @dp.callback_query(F.data == "main_my_groups")
 async def main_my_groups(callback: CallbackQuery):
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass
     uid = str(callback.from_user.id)
     data = get_user_sub(uid)
     text = "<b>Мои группы</b>"
@@ -1111,7 +1094,8 @@ async def main_my_groups(callback: CallbackQuery):
     if not has_any:
         text += "\n\nПодписок пока нет."
 
-    await callback.message.answer(
+    await safe_edit_text(
+        callback.message,
         text,
         parse_mode="HTML",
         reply_markup=back_markup("⬅️ Главное меню", "main_menu")
@@ -1121,13 +1105,10 @@ async def main_my_groups(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "main_unsubscribe")
 async def main_unsubscribe(callback: CallbackQuery):
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass
     uid = str(callback.from_user.id)
     remove_subscriber(uid)
-    await callback.message.answer(
+    await safe_edit_text(
+        callback.message,
         "🔕 Вы отписались от всего.",
         reply_markup=back_markup("⬅️ Главное меню", "main_menu")
     )
@@ -1205,15 +1186,6 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str):
         await safe_callback_answer(target)
     else:
         await target.answer(text, parse_mode="HTML", reply_markup=builder.as_markup())
-
-
-@dp.message(Command("start"))
-async def cmd_start(message: Message):
-    await message.answer(
-        "<b>Здравствуйте!</b>\n\nВыберите раздел в меню ниже.",
-        parse_mode="HTML",
-        reply_markup=main_menu_inline_keyboard()
-    )
 
 
 @dp.message(Command("help"))
