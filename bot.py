@@ -600,8 +600,7 @@ def get_searchable_cities(query: str) -> list:
                     if g["city"] not in seen:
                         matched.append(g["city"])
                         seen.add(g["city"])
-       return matched
-
+    return matched
 
 def week_of_month(dt):
     return ((dt.day - 1) // 7) + 1
@@ -844,6 +843,10 @@ def set_quiet_mode(uid: str, enabled: bool):
     else:
         data["quiet_mode_date"] = None
     set_user_sub(uid, data)
+
+
+# ─── Клавиатуры ───
+def online_menu_keyboard():
 
 
 def is_quiet_mode_active(user_data: dict) -> bool:
