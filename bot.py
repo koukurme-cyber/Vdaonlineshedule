@@ -1023,7 +1023,11 @@ async def main_online(callback: CallbackQuery):
         await callback.message.delete()
     except Exception:
         pass
-    await btn_online(callback.message)
+    await callback.message.answer(
+        "🌐 Онлайн-расписание",
+        parse_mode="HTML",
+        reply_markup=online_menu_keyboard()
+    )
     await safe_callback_answer(callback)
 
 
@@ -1033,7 +1037,11 @@ async def main_live(callback: CallbackQuery):
         await callback.message.delete()
     except Exception:
         pass
-    await btn_live(callback.message)
+    await callback.message.answer(
+        "🏙 Выберите город:",
+        parse_mode="HTML",
+        reply_markup=live_city_keyboard()
+    )
     await safe_callback_answer(callback)
 
 
@@ -1043,7 +1051,12 @@ async def main_slogan(callback: CallbackQuery):
         await callback.message.delete()
     except Exception:
         pass
-    await btn_slogan(callback.message)
+    slogan = random.choice(SLOGANS_AND_AFFIRMATIONS)
+    await callback.message.answer(
+        f"<b>Установка</b>\n<i>{escape_html(slogan)}</i>",
+        parse_mode="HTML",
+        reply_markup=back_markup("⬅️ Главное меню", "main_menu")
+    )
     await safe_callback_answer(callback)
 
 
@@ -1053,8 +1066,17 @@ async def main_sub(callback: CallbackQuery):
         await callback.message.delete()
     except Exception:
         pass
-    # Отправляем новое сообщение вместо редактирования удалённого
-    await show_sub_main(callback.message)
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🌐 Онлайн-группы", callback_data="sub_online"))
+    builder.row(InlineKeyboardButton(text="🏙 Живые группы", callback_data="sub_live"))
+    builder.row(InlineKeyboardButton(text="🌐 Уведомления для онлайн", callback_data="sub_settings_online"))
+    builder.row(InlineKeyboardButton(text="🏙 Уведомления для живых", callback_data="sub_settings_live"))
+    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="main_menu"))
+    await callback.message.answer(
+        "<b>Подписка</b>\n\nВыберите тип групп или настройки:",
+        parse_mode="HTML",
+        reply_markup=builder.as_markup()
+    )
     await safe_callback_answer(callback)
 
 
@@ -1064,7 +1086,36 @@ async def main_my_groups(callback: CallbackQuery):
         await callback.message.delete()
     except Exception:
         pass
-    await btn_my_groups(callback.message)
+    uid = str(callback.from_user.id)
+    data = get_user_sub(uid)
+    text = "<b>Мои группы</b>"
+    has_any = False
+
+    if data.get("all_online"):
+        text += "\n\n🌐 все онлайн"
+        has_any = True
+
+    if data.get("all_live"):
+        text += "\n\n🏙 все живые"
+        has_any = True
+
+    specifics = data.get("groups", {})
+    if specifics:
+        if not has_any:
+            text += "\n"
+        for name, gdata in specifics.items():
+            emoji = "🌐" if gdata.get("type") == "online" else "🏙"
+            text += f"\n{emoji} {escape_html(name)}"
+        has_any = True
+
+    if not has_any:
+        text += "\n\nПодписок пока нет."
+
+    await callback.message.answer(
+        text,
+        parse_mode="HTML",
+        reply_markup=back_markup("⬅️ Главное меню", "main_menu")
+    )
     await safe_callback_answer(callback)
 
 
@@ -1074,7 +1125,12 @@ async def main_unsubscribe(callback: CallbackQuery):
         await callback.message.delete()
     except Exception:
         pass
-    await btn_unsubscribe_all(callback.message)
+    uid = str(callback.from_user.id)
+    remove_subscriber(uid)
+    await callback.message.answer(
+        "🔕 Вы отписались от всего.",
+        reply_markup=back_markup("⬅️ Главное меню", "main_menu")
+    )
     await safe_callback_answer(callback)
 
 
