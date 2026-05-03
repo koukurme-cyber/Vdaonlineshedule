@@ -66,7 +66,7 @@ def normalize_user_sub(data: Optional[dict]) -> dict:
         "all_online": False,
         "all_live": False,
         "groups": {},
-        "reminder_minutes": [60],  # по умолчанию за час
+        "reminder_minutes": [60],
         "meta": {
             "last_daily_sent": None,
             "last_reminders": {},
@@ -447,7 +447,6 @@ def build_reminder_key(group_type: str, group_name: str, date_str: str, time_str
     return f"{group_type}|{group_name}|{date_str}|{time_str}|{reminder_minutes}"
 
 def collect_due_reminders(user_data: dict, now_dt: datetime):
-    """Собирает напоминания, группируя группы с одинаковым временем начала."""
     groups = user_data.get("groups", {})
     if not groups:
         return []
@@ -459,7 +458,6 @@ def collect_due_reminders(user_data: dict, now_dt: datetime):
 
     due_by_start: Dict[int, List[Tuple[str, str, bool, str]]] = {}
 
-    # Онлайн-группы
     for time_str, name, url in get_online_by_day(now_dt.weekday()):
         if name not in groups or groups[name].get("type") != "online":
             continue
@@ -475,7 +473,6 @@ def collect_due_reminders(user_data: dict, now_dt: datetime):
                 due_by_start[start_minutes].append(("online", name, details, key, url))
                 break
 
-    # Живые группы
     city = user_data.get("city")
     if city:
         for name, address, start, end, is_work_meeting in get_live_groups_for_day(city, now_dt.weekday()):
@@ -627,7 +624,7 @@ def render_online_day(day_index: int, uid: str) -> Tuple[str, InlineKeyboardMark
     title = f"🌐 <b>Онлайн — {DAYS[day_index]}</b>"
     if is_today:
         title = f"🌐 <b>Онлайн — Сегодня ({DAYS[day_index]})</b>"
-    lines = [title, ""]
+    lines = [title, "", "🔔 — подписаться / 🔕 — отписаться", ""]
     if groups:
         for t, n, u in groups:
             subbed = n in data.get("groups", {})
@@ -649,10 +646,7 @@ def render_online_day(day_index: int, uid: str) -> Tuple[str, InlineKeyboardMark
     for t, n, u in groups:
         gid = make_short_id("o", n)
         subbed = n in data.get("groups", {})
-        if subbed:
-            label = f"🔕 Отписаться от «{n}»"
-        else:
-            label = f"🔔 Подписаться на «{n}»"
+        label = "🔕 Отписаться" if subbed else "🔔 Подписаться"
         builder.row(InlineKeyboardButton(text=label, callback_data=f"toggle_online_{gid}_{day_index}"))
 
     builder.row(InlineKeyboardButton(text="📋 Вся неделя", callback_data="online_week"))
@@ -667,7 +661,7 @@ def render_live_day(city: str, day_index: int, uid: str) -> Tuple[str, InlineKey
     title = f"🏙 <b>{escape_html(city)} — {DAYS[day_index]}</b>"
     if is_today:
         title = f"🏙 <b>{escape_html(city)} — Сегодня ({DAYS[day_index]})</b>"
-    lines = [title, ""]
+    lines = [title, "", "🔔 — подписаться / 🔕 — отписаться", ""]
     if groups:
         for n, a, s, e, w in groups:
             subbed = n in data.get("groups", {})
@@ -690,10 +684,7 @@ def render_live_day(city: str, day_index: int, uid: str) -> Tuple[str, InlineKey
     for n, a, s, e, w in groups:
         gid = make_short_id("l", n)
         subbed = n in data.get("groups", {})
-        if subbed:
-            label = f"🔕 Отписаться от «{n}»"
-        else:
-            label = f"🔔 Подписаться на «{n}»"
+        label = "🔕 Отписаться" if subbed else "🔔 Подписаться"
         builder.row(InlineKeyboardButton(text=label, callback_data=f"toggle_live_{cid}_{gid}_{day_index}"))
 
     builder.row(InlineKeyboardButton(text="📋 Вся неделя", callback_data=f"live_week_{cid}"))
