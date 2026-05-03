@@ -643,7 +643,6 @@ def render_online_day(day_index: int, uid: str) -> Tuple[str, InlineKeyboardMark
     days_row = build_day_selector(day_index, "online_day_")
     builder.attach(InlineKeyboardBuilder.from_markup(days_row))
 
-    # Два значка на каждую группу
     for t, n, u in groups:
         gid = make_short_id("o", n)
         subbed = n in data.get("groups", {})
@@ -852,7 +851,6 @@ async def info_online(callback: CallbackQuery):
     if not group_name:
         await safe_callback_answer(callback, "Информация не найдена")
         return
-    # Ищем данные группы
     url = ""
     for dg in ONLINE_SCHEDULE.values():
         for t, n, u in dg:
@@ -953,7 +951,6 @@ async def info_live(callback: CallbackQuery):
     if not group_name:
         await safe_callback_answer(callback, "Информация не найдена")
         return
-    # Ищем данные группы
     city = address = ""
     for g in LIVE_GROUPS:
         if g["name"] == group_name:
