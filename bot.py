@@ -624,7 +624,7 @@ def render_online_day(day_index: int, uid: str) -> Tuple[str, InlineKeyboardMark
     title = f"🌐 <b>Онлайн — {DAYS[day_index]}</b>"
     if is_today:
         title = f"🌐 <b>Онлайн — Сегодня ({DAYS[day_index]})</b>"
-    lines = [title, "", "🔔 — подписаться / 🔕 — отписаться", ""]
+    lines = [title, "", "Нажмите 🔔/🔕 для подписки", ""]
     if groups:
         for t, n, u in groups:
             subbed = n in data.get("groups", {})
@@ -643,11 +643,14 @@ def render_online_day(day_index: int, uid: str) -> Tuple[str, InlineKeyboardMark
     days_row = build_day_selector(day_index, "online_day_")
     builder.attach(InlineKeyboardBuilder.from_markup(days_row))
 
+    # Компактные кнопки-колокольчики
     for t, n, u in groups:
         gid = make_short_id("o", n)
         subbed = n in data.get("groups", {})
-        label = "🔕 Отписаться" if subbed else "🔔 Подписаться"
-        builder.row(InlineKeyboardButton(text=label, callback_data=f"toggle_online_{gid}_{day_index}"))
+        builder.row(InlineKeyboardButton(
+            text="🔕" if subbed else "🔔",
+            callback_data=f"toggle_online_{gid}_{day_index}"
+        ))
 
     builder.row(InlineKeyboardButton(text="📋 Вся неделя", callback_data="online_week"))
     return "\n".join(lines), builder.as_markup()
@@ -661,7 +664,7 @@ def render_live_day(city: str, day_index: int, uid: str) -> Tuple[str, InlineKey
     title = f"🏙 <b>{escape_html(city)} — {DAYS[day_index]}</b>"
     if is_today:
         title = f"🏙 <b>{escape_html(city)} — Сегодня ({DAYS[day_index]})</b>"
-    lines = [title, "", "🔔 — подписаться / 🔕 — отписаться", ""]
+    lines = [title, "", "Нажмите 🔔/🔕 для подписки", ""]
     if groups:
         for n, a, s, e, w in groups:
             subbed = n in data.get("groups", {})
@@ -684,8 +687,10 @@ def render_live_day(city: str, day_index: int, uid: str) -> Tuple[str, InlineKey
     for n, a, s, e, w in groups:
         gid = make_short_id("l", n)
         subbed = n in data.get("groups", {})
-        label = "🔕 Отписаться" if subbed else "🔔 Подписаться"
-        builder.row(InlineKeyboardButton(text=label, callback_data=f"toggle_live_{cid}_{gid}_{day_index}"))
+        builder.row(InlineKeyboardButton(
+            text="🔕" if subbed else "🔔",
+            callback_data=f"toggle_live_{cid}_{gid}_{day_index}"
+        ))
 
     builder.row(InlineKeyboardButton(text="📋 Вся неделя", callback_data=f"live_week_{cid}"))
     builder.row(InlineKeyboardButton(text="← Назад", callback_data="live_city_list"))
