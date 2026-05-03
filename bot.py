@@ -1,4 +1,4 @@
-import asyncio
+тоimport asyncio
 import hashlib
 import json
 import os
@@ -768,7 +768,7 @@ def build_reminder_key(group_type: str, group_name: str, date_str: str, time_str
 
 
 def build_online_single_reminder(name: str, url: str, time_str: str, minutes_before: int = 60) -> str:
-    before_text = "за час" if minutes_before == 60 else "за два часа"
+    before_text = череза час" if minutes_before == 60 else "через два часа"
     return (
         f"Привет! Это бережное напоминание: {before_text} начнётся онлайн-группа.\n\n"
         f"🌐 <b>{escape_html(name)}</b>\n"
@@ -779,7 +779,7 @@ def build_online_single_reminder(name: str, url: str, time_str: str, minutes_bef
 
 
 def build_online_multi_reminder(time_str: str, items: list[tuple[str, str]], minutes_before: int = 60) -> str:
-    before_text = "за час" if minutes_before == 60 else "за два часа"
+    before_text = "через час" if minutes_before == 60 else "через два часа"
     text = [
         f"Привет! Это бережное напоминание: {before_text} начнутся онлайн-группы.",
         "",
