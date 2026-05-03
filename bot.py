@@ -127,9 +127,9 @@ def format_live_group(name: str, address: str, start: str, end: str, is_work_mee
     return f"• <b>{escape_html(name)}</b>{label} — {escape_html(address)} ({start}–{end})"
 
 # ==================== CALLBACK SAFE ====================
-async def safe_callback_answer(callback: CallbackQuery, text: str = ""):
+async def safe_callback_answer(callback: CallbackQuery, text: str = "", show_alert: bool = False):
     try:
-        await callback.answer(text)
+        await callback.answer(text, show_alert=show_alert)
     except Exception:
         pass
 
@@ -624,7 +624,7 @@ def render_online_day(day_index: int, uid: str) -> Tuple[str, InlineKeyboardMark
     title = f"🌐 <b>Онлайн — {DAYS[day_index]}</b>"
     if is_today:
         title = f"🌐 <b>Онлайн — Сегодня ({DAYS[day_index]})</b>"
-    lines = [title, "", "Нажмите 🔔/🔕 для подписки", ""]
+    lines = [title, "", "🔔 — подписка | ℹ️ — информация", ""]
     if groups:
         for t, n, u in groups:
             subbed = n in data.get("groups", {})
@@ -643,14 +643,15 @@ def render_online_day(day_index: int, uid: str) -> Tuple[str, InlineKeyboardMark
     days_row = build_day_selector(day_index, "online_day_")
     builder.attach(InlineKeyboardBuilder.from_markup(days_row))
 
-    # Компактные кнопки-колокольчики
+    # Два значка на каждую группу
     for t, n, u in groups:
         gid = make_short_id("o", n)
         subbed = n in data.get("groups", {})
-        builder.row(InlineKeyboardButton(
-            text="🔕" if subbed else "🔔",
-            callback_data=f"toggle_online_{gid}_{day_index}"
-        ))
+        bell = "🔕" if subbed else "🔔"
+        builder.row(
+            InlineKeyboardButton(text=bell, callback_data=f"toggle_online_{gid}_{day_index}"),
+            InlineKeyboardButton(text="ℹ️", callback_data=f"info_online_{gid}"),
+        )
 
     builder.row(InlineKeyboardButton(text="📋 Вся неделя", callback_data="online_week"))
     return "\n".join(lines), builder.as_markup()
@@ -664,7 +665,7 @@ def render_live_day(city: str, day_index: int, uid: str) -> Tuple[str, InlineKey
     title = f"🏙 <b>{escape_html(city)} — {DAYS[day_index]}</b>"
     if is_today:
         title = f"🏙 <b>{escape_html(city)} — Сегодня ({DAYS[day_index]})</b>"
-    lines = [title, "", "Нажмите 🔔/🔕 для подписки", ""]
+    lines = [title, "", "🔔 — подписка | ℹ️ — информация", ""]
     if groups:
         for n, a, s, e, w in groups:
             subbed = n in data.get("groups", {})
@@ -687,10 +688,11 @@ def render_live_day(city: str, day_index: int, uid: str) -> Tuple[str, InlineKey
     for n, a, s, e, w in groups:
         gid = make_short_id("l", n)
         subbed = n in data.get("groups", {})
-        builder.row(InlineKeyboardButton(
-            text="🔕" if subbed else "🔔",
-            callback_data=f"toggle_live_{cid}_{gid}_{day_index}"
-        ))
+        bell = "🔕" if subbed else "🔔"
+        builder.row(
+            InlineKeyboardButton(text=bell, callback_data=f"toggle_live_{cid}_{gid}_{day_index}"),
+            InlineKeyboardButton(text="ℹ️", callback_data=f"info_live_{gid}"),
+        )
 
     builder.row(InlineKeyboardButton(text="📋 Вся неделя", callback_data=f"live_week_{cid}"))
     builder.row(InlineKeyboardButton(text="← Назад", callback_data="live_city_list"))
@@ -843,6 +845,24 @@ async def toggle_online(callback: CallbackQuery):
     await safe_edit_text(callback.message, text, parse_mode="HTML", reply_markup=markup, disable_web_page_preview=True)
     await safe_callback_answer(callback, "Обновлено")
 
+@dp.callback_query(F.data.startswith("info_online_"))
+async def info_online(callback: CallbackQuery):
+    gid = callback.data[len("info_online_"):]
+    group_name = ONLINE_GROUP_ID_TO_NAME.get(gid)
+    if not group_name:
+        await safe_callback_answer(callback, "Информация не найдена")
+        return
+    # Ищем данные группы
+    url = ""
+    for dg in ONLINE_SCHEDULE.values():
+        for t, n, u in dg:
+            if n == group_name:
+                times = t
+                url = u
+                break
+    text = f"🌐 <b>{escape_html(group_name)}</b>\nВремя: {times}\nСсылка: {url}"
+    await safe_callback_answer(callback, text, show_alert=True)
+
 # --- Живые ---
 @dp.callback_query(F.data.startswith("live_city_"))
 async def live_city_selected(callback: CallbackQuery):
@@ -925,6 +945,23 @@ async def toggle_live(callback: CallbackQuery):
     text, markup = render_live_day(city, day_index, uid)
     await safe_edit_text(callback.message, text, parse_mode="HTML", reply_markup=markup)
     await safe_callback_answer(callback, "Обновлено")
+
+@dp.callback_query(F.data.startswith("info_live_"))
+async def info_live(callback: CallbackQuery):
+    gid = callback.data[len("info_live_"):]
+    group_name = LIVE_GROUP_ID_TO_NAME.get(gid)
+    if not group_name:
+        await safe_callback_answer(callback, "Информация не найдена")
+        return
+    # Ищем данные группы
+    city = address = ""
+    for g in LIVE_GROUPS:
+        if g["name"] == group_name:
+            city = g["city"]
+            address = g["address"]
+            break
+    text = f"🏙 <b>{escape_html(group_name)}</b>\n📍 {escape_html(address)}\n🏙 {escape_html(city)}"
+    await safe_callback_answer(callback, text, show_alert=True)
 
 @dp.callback_query(F.data == "live_search_city")
 async def live_search_city_start(callback: CallbackQuery, state: FSMContext):
