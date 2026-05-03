@@ -44,6 +44,9 @@ def time_to_minutes(hhmm: str) -> int:
     h, m = map(int, hhmm.split(":"))
     return h * 60 + m
 
+def minutes_to_time(minutes: int) -> str:
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
 # ==================== ХРАНЕНИЕ ====================
 def load_subscribers() -> dict:
     try:
@@ -63,6 +66,7 @@ def normalize_user_sub(data: Optional[dict]) -> dict:
         "all_online": False,
         "all_live": False,
         "groups": {},
+        "reminder_minutes": [60],  # по умолчанию за час
         "meta": {
             "last_daily_sent": None,
             "last_reminders": {},
@@ -73,6 +77,10 @@ def normalize_user_sub(data: Optional[dict]) -> dict:
     base.update(data)
     if not isinstance(base.get("groups"), dict):
         base["groups"] = {}
+    if not isinstance(base.get("reminder_minutes"), list):
+        base["reminder_minutes"] = [60]
+    if not base["reminder_minutes"]:
+        base["reminder_minutes"] = [60]
     if not isinstance(base.get("meta"), dict):
         base["meta"] = {}
     if not isinstance(base["meta"].get("last_reminders"), dict):
@@ -150,6 +158,7 @@ reply_main_menu = ReplyKeyboardMarkup(
 )
 
 DAYS = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+SHORT_DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 
 ONLINE_SCHEDULE = {
     0: [("05:00","Восход","https://t.me/+gdi_B_ctmVJkMTAy"),("07:00","ВДА Утро","https://t.me/+KBt9VaElvMA4NTcy"),("07:00","Маяк ВДА","https://t.me/+1XGQ4SDkR8M0N2Yy"),("08:00","Единство утро","https://t.me/ACAgroupUnityMoscow"),("08:00","Говори Доверяй Чувствуй","https://t.me/govori_vda"),("09:00","Доверие","https://t.me/VDADoverie"),("12:00","День за днём","https://t.me/+BwAsiX1KsGljZjQy"),("17:00","Шаг за шагом","https://t.me/joinchat/4SFNdPrxumNkYzky"),("18:00","Весна","https://t.me/vdavesna_2021"),("19:00","Рассвет","https://t.me/+OOw9IMnM5x1hNDJi"),("19:00","Маяк ВДА","https://t.me/+1XGQ4SDkR8M0N2Yy"),("21:00","ДЫШИ!","https://t.me/breathelivebe"),("21:00","ВДА ВЕЧЕР","https://t.me/vda_vecher"),("21:00","Свобода","https://t.me/vda_svoboda")],
@@ -426,57 +435,112 @@ def build_daily_message(uid: str, user_data: dict) -> Optional[str]:
     if online_groups:
         parts.append("\n<b>🌐 Онлайн:</b>")
         for t, n, u in online_groups:
-            bell = " 🔔" if n in user_data.get("groups", {}) else ""
-            parts.append(f'🟠 <b>{t}</b> — <a href="{u}">{escape_html(n)}</a>{bell}')
+            parts.append(f'🟠 <b>{t}</b> — <a href="{u}">{escape_html(n)}</a>')
     if live_groups:
         parts.append("\n<b>🏙 Живые:</b>")
         for n, a, s, e, w in live_groups:
             label = " 🔧" if w else ""
-            bell = " 🔔" if n in user_data.get("groups", {}) else ""
-            parts.append(f"• <b>{escape_html(n)}</b>{label}{bell} — {escape_html(a)} ({s}–{e})")
+            parts.append(f"• <b>{escape_html(n)}</b>{label} — {escape_html(a)} ({s}–{e})")
     return "\n".join(parts)
 
-def build_reminder_key(group_type: str, group_name: str, date_str: str, time_str: str) -> str:
-    return f"{group_type}|{group_name}|{date_str}|{time_str}"
+def build_reminder_key(group_type: str, group_name: str, date_str: str, time_str: str, reminder_minutes: int) -> str:
+    return f"{group_type}|{group_name}|{date_str}|{time_str}|{reminder_minutes}"
 
 def collect_due_reminders(user_data: dict, now_dt: datetime):
-    due = []
+    """Собирает напоминания, группируя группы с одинаковым временем начала."""
+    groups = user_data.get("groups", {})
+    if not groups:
+        return []
+
+    reminders_meta = user_data.setdefault("meta", {}).setdefault("last_reminders", {})
+    reminder_minutes_list = user_data.get("reminder_minutes", [60])
     today_str = now_dt.strftime("%Y-%m-%d")
     now_minutes = now_dt.hour * 60 + now_dt.minute
-    groups = user_data.get("groups", {})
-    reminders_meta = user_data.setdefault("meta", {}).setdefault("last_reminders", {})
+
+    due_by_start: Dict[int, List[Tuple[str, str, bool, str]]] = {}
+
+    # Онлайн-группы
     for time_str, name, url in get_online_by_day(now_dt.weekday()):
         if name not in groups or groups[name].get("type") != "online":
             continue
         start_minutes = time_to_minutes(time_str)
-        if start_minutes - now_minutes == 60:
-            key = build_reminder_key("online", name, today_str, time_str)
-            if reminders_meta.get(key) != today_str:
-                text = (
-                    f"🔔 <b>Напоминание за час</b>\n\n"
-                    f"🌐 <b>{escape_html(name)}</b>\n"
-                    f"Начало: <b>{time_str}</b>\n"
-                    f"Ссылка: <a href=\"{url}\">перейти в группу</a>"
-                )
-                due.append((key, text, True))
+        for r_min in reminder_minutes_list:
+            if start_minutes - now_minutes == r_min:
+                key = build_reminder_key("online", name, today_str, time_str, r_min)
+                if reminders_meta.get(key) == today_str:
+                    continue
+                details = f'<a href="{url}">{escape_html(name)}</a>'
+                if start_minutes not in due_by_start:
+                    due_by_start[start_minutes] = []
+                due_by_start[start_minutes].append(("online", name, details, key, url))
+                break
+
+    # Живые группы
     city = user_data.get("city")
     if city:
         for name, address, start, end, is_work_meeting in get_live_groups_for_day(city, now_dt.weekday()):
             if name not in groups or groups[name].get("type") != "live":
                 continue
             start_minutes = time_to_minutes(start)
-            if start_minutes - now_minutes == 60:
-                key = build_reminder_key("live", name, today_str, start)
-                if reminders_meta.get(key) != today_str:
+            for r_min in reminder_minutes_list:
+                if start_minutes - now_minutes == r_min:
+                    key = build_reminder_key("live", name, today_str, start, r_min)
+                    if reminders_meta.get(key) == today_str:
+                        continue
                     label = " 🔧" if is_work_meeting else ""
-                    text = (
-                        f"🔔 <b>Напоминание за час</b>\n\n"
-                        f"🏙 <b>{escape_html(name)}</b>{label}\n"
-                        f"Адрес: {escape_html(address)}\n"
-                        f"Начало: <b>{start}</b>"
-                    )
-                    due.append((key, text, False))
-    return due
+                    details = f'🏙 <b>{escape_html(name)}</b>{label}\n   📍 {escape_html(address)}'
+                    if start_minutes not in due_by_start:
+                        due_by_start[start_minutes] = []
+                    due_by_start[start_minutes].append(("live", name, details, key, address))
+                    break
+
+    result = []
+    for start_minutes, entries in due_by_start.items():
+        time_label = f"в {minutes_to_time(start_minutes)}"
+        r_min_val = start_minutes - now_minutes
+        if r_min_val == 60:
+            time_text = "за час"
+        elif r_min_val == 120:
+            time_text = "за два часа"
+        else:
+            time_text = f"за {r_min_val // 60} ч"
+
+        online_lines = []
+        live_lines = []
+        keys = []
+        has_disabled_preview = False
+        for gtype, gname, detail, key, extra in entries:
+            keys.append(key)
+            if gtype == "online":
+                online_lines.append(detail)
+                if not has_disabled_preview:
+                    has_disabled_preview = True
+            else:
+                live_lines.append(detail)
+
+        intro = f"🕊 Привет, это бережное напоминание: {time_text} начнётся"
+        if online_lines:
+            online_part = "\n".join(online_lines)
+            if len(online_lines) == 1:
+                intro += f" онлайн-группа:\n{online_part}"
+            else:
+                intro += f" онлайн-группы:\n{online_part}"
+        if live_lines:
+            live_part = "\n".join(live_lines)
+            if online_lines:
+                if len(live_lines) == 1:
+                    intro += "\nа также живая группа:\n" + live_part
+                else:
+                    intro += "\nа также живые группы:\n" + live_part
+            else:
+                if len(live_lines) == 1:
+                    intro += f" живая группа:\n{live_part}"
+                else:
+                    intro += f" живые группы:\n{live_part}"
+
+        result.append((keys, intro, has_disabled_preview))
+
+    return result
 
 def cleanup_old_reminders(user_data: dict, now_dt: datetime):
     meta = user_data.setdefault("meta", {})
@@ -522,10 +586,11 @@ async def send_hourly_reminders(bot: Bot, now_dt: datetime):
         if not due_reminders:
             subs[uid] = data
             continue
-        for key, text, disable_preview in due_reminders:
+        for keys, text, disable_preview in due_reminders:
             try:
                 await bot.send_message(int(uid), text, parse_mode="HTML", disable_web_page_preview=disable_preview)
-                data["meta"]["last_reminders"][key] = now_dt.strftime("%Y-%m-%d")
+                for key in keys:
+                    data["meta"]["last_reminders"][key] = now_dt.strftime("%Y-%m-%d")
                 changed = True
             except Exception as e:
                 print(f"❌ Не удалось отправить reminder пользователю {uid}: {e}")
@@ -545,35 +610,51 @@ async def notifications_worker(bot: Bot):
             print(f"❌ Ошибка в notifications_worker: {e}")
         await asyncio.sleep(CHECK_INTERVAL_SECONDS)
 
-# ==================== КЛАВИАТУРЫ И РЕНДЕРИНГ ====================
+# ==================== РЕНДЕРИНГ ====================
+def build_day_selector(current_day: int, prefix: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for i, short in enumerate(SHORT_DAYS):
+        label = f"[{short}]" if i == current_day else short
+        builder.button(text=label, callback_data=f"{prefix}{i}")
+    builder.adjust(7)
+    return builder.as_markup()
+
 def render_online_day(day_index: int, uid: str) -> Tuple[str, InlineKeyboardMarkup]:
     groups = get_online_by_day(day_index)
     data = get_user_sub(uid)
-    lines = [f"🌐 <b>Онлайн — {DAYS[day_index]}</b>\n"]
+    today = moscow_now().weekday()
+    is_today = (day_index == today)
+    title = f"🌐 <b>Онлайн — {DAYS[day_index]}</b>"
+    if is_today:
+        title = f"🌐 <b>Онлайн — Сегодня ({DAYS[day_index]})</b>"
+    lines = [title, ""]
     if groups:
         for t, n, u in groups:
             subbed = n in data.get("groups", {})
-            bell = "🔔" if subbed else "🔕"
-            gid = make_short_id("o", n)
-            lines.append(f'{bell} <b>{t}</b> — <a href="{u}">{escape_html(n)}</a>')
+            icon = "🔕" if subbed else "🔔"
+            lines.append(f'{icon} <b>{t}</b> — <a href="{u}">{escape_html(n)}</a>')
     else:
         lines.append("Нет групп.")
-    
+
     builder = InlineKeyboardBuilder()
-    # Кнопки переключения дней
     prev_day = (day_index - 1) % 7
     next_day = (day_index + 1) % 7
     builder.row(
         InlineKeyboardButton(text="◀", callback_data=f"online_day_{prev_day}"),
         InlineKeyboardButton(text="▶", callback_data=f"online_day_{next_day}"),
     )
-    # Колокольчики для каждой группы (в ряд)
+    days_row = build_day_selector(day_index, "online_day_")
+    builder.attach(InlineKeyboardBuilder.from_markup(days_row))
+
     for t, n, u in groups:
         gid = make_short_id("o", n)
         subbed = n in data.get("groups", {})
-        label = "🔕" if subbed else "🔔"
-        builder.row(InlineKeyboardButton(text=f"{label} {n}", callback_data=f"toggle_online_{gid}_{day_index}"))
-    
+        if subbed:
+            label = f"🔕 Отписаться от «{n}»"
+        else:
+            label = f"🔔 Подписаться на «{n}»"
+        builder.row(InlineKeyboardButton(text=label, callback_data=f"toggle_online_{gid}_{day_index}"))
+
     builder.row(InlineKeyboardButton(text="📋 Вся неделя", callback_data="online_week"))
     return "\n".join(lines), builder.as_markup()
 
@@ -581,16 +662,21 @@ def render_live_day(city: str, day_index: int, uid: str) -> Tuple[str, InlineKey
     groups = get_live_groups_for_day(city, day_index)
     data = get_user_sub(uid)
     cid = city_to_id.get(city, city)
-    lines = [f"🏙 <b>{escape_html(city)} — {DAYS[day_index]}</b>\n"]
+    today = moscow_now().weekday()
+    is_today = (day_index == today)
+    title = f"🏙 <b>{escape_html(city)} — {DAYS[day_index]}</b>"
+    if is_today:
+        title = f"🏙 <b>{escape_html(city)} — Сегодня ({DAYS[day_index]})</b>"
+    lines = [title, ""]
     if groups:
         for n, a, s, e, w in groups:
             subbed = n in data.get("groups", {})
-            bell = "🔔" if subbed else "🔕"
+            icon = "🔕" if subbed else "🔔"
             label = " 🔧" if w else ""
-            lines.append(f'{bell} <b>{escape_html(n)}</b>{label} — {escape_html(a)} ({s}–{e})')
+            lines.append(f'{icon} <b>{escape_html(n)}</b>{label} — {escape_html(a)} ({s}–{e})')
     else:
         lines.append("Нет групп.")
-    
+
     builder = InlineKeyboardBuilder()
     prev_day = (day_index - 1) % 7
     next_day = (day_index + 1) % 7
@@ -598,12 +684,18 @@ def render_live_day(city: str, day_index: int, uid: str) -> Tuple[str, InlineKey
         InlineKeyboardButton(text="◀", callback_data=f"live_day_{cid}_{prev_day}"),
         InlineKeyboardButton(text="▶", callback_data=f"live_day_{cid}_{next_day}"),
     )
+    days_row = build_day_selector(day_index, f"live_day_{cid}_")
+    builder.attach(InlineKeyboardBuilder.from_markup(days_row))
+
     for n, a, s, e, w in groups:
         gid = make_short_id("l", n)
         subbed = n in data.get("groups", {})
-        label = "🔕" if subbed else "🔔"
-        builder.row(InlineKeyboardButton(text=f"{label} {n}", callback_data=f"toggle_live_{cid}_{gid}_{day_index}"))
-    
+        if subbed:
+            label = f"🔕 Отписаться от «{n}»"
+        else:
+            label = f"🔔 Подписаться на «{n}»"
+        builder.row(InlineKeyboardButton(text=label, callback_data=f"toggle_live_{cid}_{gid}_{day_index}"))
+
     builder.row(InlineKeyboardButton(text="📋 Вся неделя", callback_data=f"live_week_{cid}"))
     builder.row(InlineKeyboardButton(text="← Назад", callback_data="live_city_list"))
     return "\n".join(lines), builder.as_markup()
@@ -611,28 +703,47 @@ def render_live_day(city: str, day_index: int, uid: str) -> Tuple[str, InlineKey
 def render_subscriptions(uid: str) -> Tuple[str, InlineKeyboardMarkup]:
     data = get_user_sub(uid)
     groups = data.get("groups", {})
+    reminder_minutes = data.get("reminder_minutes", [60])
+    if 60 in reminder_minutes and 120 in reminder_minutes:
+        reminder_text = "⏰ Напоминания: за 1 ч и за 2 ч"
+    elif 120 in reminder_minutes:
+        reminder_text = "⏰ Напоминания: за 2 ч"
+    else:
+        reminder_text = "⏰ Напоминания: за 1 ч"
+
     text = "🔔 <b>Мои подписки</b>\n\n"
     if not groups:
-        text += "Нет активных подписок.\nПодпишитесь на группы через разделы «Онлайн» или «Живые»."
-        return text, InlineKeyboardMarkup(inline_keyboard=[])
-    
+        text += "Нет активных подписок.\nПодпишитесь на группы в разделах «Онлайн» или «Живые»."
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="🌐 Онлайн", callback_data="goto_online"),
+            InlineKeyboardButton(text="🏙 Живые", callback_data="goto_live"),
+        )
+        builder.row(InlineKeyboardButton(text=reminder_text, callback_data="change_reminder"))
+        return text, builder.as_markup()
+
     builder = InlineKeyboardBuilder()
     for name, gdata in groups.items():
         gtype = gdata.get("type", "online")
         emoji = "🌐" if gtype == "online" else "🏙"
         gid = make_short_id("o" if gtype == "online" else "l", name)
         builder.row(InlineKeyboardButton(
-            text=f"🔕 {emoji} {name}",
+            text=f"🔕 Отписаться от {emoji} «{name}»",
             callback_data=f"unsub_{gtype}_{gid}"
         ))
-    
+
     city = data.get("city")
     if city:
         builder.row(InlineKeyboardButton(text=f"🏙 Сменить город ({city})", callback_data="sub_change_city"))
     else:
         builder.row(InlineKeyboardButton(text="🏙 Выбрать город (для живых)", callback_data="sub_change_city"))
-    
+
+    builder.row(InlineKeyboardButton(text=reminder_text, callback_data="change_reminder"))
     builder.row(InlineKeyboardButton(text="🔕 Отписаться от всего", callback_data="unsub_all"))
+    builder.row(
+        InlineKeyboardButton(text="🌐 Онлайн", callback_data="goto_online"),
+        InlineKeyboardButton(text="🏙 Живые", callback_data="goto_live"),
+    )
     return text, builder.as_markup()
 
 # ==================== ДИСПЕТЧЕР ====================
@@ -659,7 +770,6 @@ async def show_live(message: Message):
         text, markup = render_live_day(city, day_index, uid)
         await message.answer(text, parse_mode="HTML", reply_markup=markup)
     else:
-        # Показать выбор города
         builder = InlineKeyboardBuilder()
         for c in POPULAR_CITIES:
             cid = city_to_id.get(c, c)
@@ -679,7 +789,7 @@ async def cmd_slogan(message: Message):
     slogan = random.choice(SLOGANS_AND_AFFIRMATIONS)
     await message.answer(f"💫 <b>Установка:</b>\n\n<i>«{escape_html(slogan)}»</i>", parse_mode="HTML")
 
-# --- Онлайн навигация ---
+# --- Онлайн ---
 @dp.callback_query(F.data.startswith("online_day_"))
 async def online_day_callback(callback: CallbackQuery):
     day_index = int(callback.data.split("_")[-1])
@@ -710,7 +820,58 @@ async def online_week_back(callback: CallbackQuery):
     await show_online(callback.message)
     await safe_callback_answer(callback)
 
-# --- Живые навигация ---
+@dp.callback_query(F.data.startswith("toggle_online_"))
+async def toggle_online(callback: CallbackQuery):
+    parts = callback.data.split("_")
+    gid = parts[2]
+    day_index = int(parts[3])
+    group_name = ONLINE_GROUP_ID_TO_NAME.get(gid)
+    if not group_name:
+        await safe_callback_answer(callback, "Ошибка")
+        return
+    uid = str(callback.from_user.id)
+    data = get_user_sub(uid)
+    groups = data.setdefault("groups", {})
+    if group_name in groups:
+        del groups[group_name]
+    else:
+        url = ""
+        for dg in ONLINE_SCHEDULE.values():
+            for t, n, u in dg:
+                if n == group_name:
+                    url = u
+                    break
+        groups[group_name] = {"type": "online", "info": {"url": url}}
+    set_user_sub(uid, data)
+    text, markup = render_online_day(day_index, uid)
+    await safe_edit_text(callback.message, text, parse_mode="HTML", reply_markup=markup, disable_web_page_preview=True)
+    await safe_callback_answer(callback, "Обновлено")
+
+# --- Живые ---
+@dp.callback_query(F.data.startswith("live_city_"))
+async def live_city_selected(callback: CallbackQuery):
+    cid = callback.data[len("live_city_"):]
+    city = id_to_city.get(cid, cid)
+    uid = str(callback.from_user.id)
+    data = get_user_sub(uid)
+    data["city"] = city
+    set_user_sub(uid, data)
+    day_index = moscow_now().weekday()
+    text, markup = render_live_day(city, day_index, uid)
+    await safe_edit_text(callback.message, text, parse_mode="HTML", reply_markup=markup)
+    await safe_callback_answer(callback)
+
+@dp.callback_query(F.data == "live_city_list")
+async def live_city_list_callback(callback: CallbackQuery):
+    builder = InlineKeyboardBuilder()
+    for c in POPULAR_CITIES:
+        cid = city_to_id.get(c, c)
+        builder.button(text=c, callback_data=f"live_city_{cid}")
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text="🔍 Найти город", callback_data="live_search_city"))
+    await safe_edit_text(callback.message, "🏙 Выберите город:", reply_markup=builder.as_markup())
+    await safe_callback_answer(callback)
+
 @dp.callback_query(F.data.startswith("live_day_"))
 async def live_day_callback(callback: CallbackQuery):
     parts = callback.data.split("_")
@@ -741,29 +902,33 @@ async def live_back_callback(callback: CallbackQuery):
     await safe_edit_text(callback.message, text, parse_mode="HTML", reply_markup=markup)
     await safe_callback_answer(callback)
 
-@dp.callback_query(F.data == "live_city_list")
-async def live_city_list_callback(callback: CallbackQuery):
-    builder = InlineKeyboardBuilder()
-    for c in POPULAR_CITIES:
-        cid = city_to_id.get(c, c)
-        builder.button(text=c, callback_data=f"live_city_{cid}")
-    builder.adjust(2)
-    builder.row(InlineKeyboardButton(text="🔍 Найти город", callback_data="live_search_city"))
-    await safe_edit_text(callback.message, "🏙 Выберите город:", reply_markup=builder.as_markup())
-    await safe_callback_answer(callback)
-
-@dp.callback_query(F.data.startswith("live_city_"))
-async def live_city_selected(callback: CallbackQuery):
-    cid = callback.data[len("live_city_"):]
+@dp.callback_query(F.data.startswith("toggle_live_"))
+async def toggle_live(callback: CallbackQuery):
+    parts = callback.data.split("_")
+    cid = parts[2]
+    gid = parts[3]
+    day_index = int(parts[4])
     city = id_to_city.get(cid, cid)
+    group_name = LIVE_GROUP_ID_TO_NAME.get(gid)
+    if not group_name:
+        await safe_callback_answer(callback, "Ошибка")
+        return
     uid = str(callback.from_user.id)
     data = get_user_sub(uid)
-    data["city"] = city
+    groups = data.setdefault("groups", {})
+    if group_name in groups:
+        del groups[group_name]
+    else:
+        info = {}
+        for g in LIVE_GROUPS:
+            if g["name"] == group_name:
+                info = {"city": city, "address": g["address"]}
+                break
+        groups[group_name] = {"type": "live", "info": info}
     set_user_sub(uid, data)
-    day_index = moscow_now().weekday()
     text, markup = render_live_day(city, day_index, uid)
     await safe_edit_text(callback.message, text, parse_mode="HTML", reply_markup=markup)
-    await safe_callback_answer(callback)
+    await safe_callback_answer(callback, "Обновлено")
 
 @dp.callback_query(F.data == "live_search_city")
 async def live_search_city_start(callback: CallbackQuery, state: FSMContext):
@@ -798,68 +963,9 @@ async def live_search_city_handle(message: Message, state: FSMContext):
         builder.row(InlineKeyboardButton(text="← Назад", callback_data="live_city_list"))
         await message.answer("🔍 Уточните:", reply_markup=builder.as_markup())
 
-# --- Подписка/отписка через колокольчики ---
-@dp.callback_query(F.data.startswith("toggle_online_"))
-async def toggle_online(callback: CallbackQuery):
-    # toggle_online_{gid}_{day_index}
-    parts = callback.data.split("_")
-    gid = parts[2]
-    day_index = int(parts[3])
-    group_name = ONLINE_GROUP_ID_TO_NAME.get(gid)
-    if not group_name:
-        await safe_callback_answer(callback, "Ошибка")
-        return
-    uid = str(callback.from_user.id)
-    data = get_user_sub(uid)
-    groups = data.setdefault("groups", {})
-    if group_name in groups:
-        del groups[group_name]
-    else:
-        url = ""
-        for dg in ONLINE_SCHEDULE.values():
-            for t, n, u in dg:
-                if n == group_name:
-                    url = u
-                    break
-        groups[group_name] = {"type": "online", "info": {"url": url}}
-    set_user_sub(uid, data)
-    text, markup = render_online_day(day_index, uid)
-    await safe_edit_text(callback.message, text, parse_mode="HTML", reply_markup=markup, disable_web_page_preview=True)
-    await safe_callback_answer(callback, "Обновлено")
-
-@dp.callback_query(F.data.startswith("toggle_live_"))
-async def toggle_live(callback: CallbackQuery):
-    # toggle_live_{cid}_{gid}_{day_index}
-    parts = callback.data.split("_")
-    cid = parts[2]
-    gid = parts[3]
-    day_index = int(parts[4])
-    city = id_to_city.get(cid, cid)
-    group_name = LIVE_GROUP_ID_TO_NAME.get(gid)
-    if not group_name:
-        await safe_callback_answer(callback, "Ошибка")
-        return
-    uid = str(callback.from_user.id)
-    data = get_user_sub(uid)
-    groups = data.setdefault("groups", {})
-    if group_name in groups:
-        del groups[group_name]
-    else:
-        info = {}
-        for g in LIVE_GROUPS:
-            if g["name"] == group_name:
-                info = {"city": city, "address": g["address"]}
-                break
-        groups[group_name] = {"type": "live", "info": info}
-    set_user_sub(uid, data)
-    text, markup = render_live_day(city, day_index, uid)
-    await safe_edit_text(callback.message, text, parse_mode="HTML", reply_markup=markup)
-    await safe_callback_answer(callback, "Обновлено")
-
-# --- Управление подписками ---
+# --- Мои подписки ---
 @dp.callback_query(F.data.startswith("unsub_"))
 async def unsub_group(callback: CallbackQuery):
-    # unsub_{type}_{gid}
     parts = callback.data.split("_")
     gtype = parts[1]
     gid = parts[2]
@@ -936,6 +1042,70 @@ async def sub_back_to_list(callback: CallbackQuery):
     text, markup = render_subscriptions(uid)
     await safe_edit_text(callback.message, text, parse_mode="HTML", reply_markup=markup)
     await safe_callback_answer(callback)
+
+@dp.callback_query(F.data == "goto_online")
+async def goto_online(callback: CallbackQuery):
+    uid = str(callback.from_user.id)
+    day_index = moscow_now().weekday()
+    text, markup = render_online_day(day_index, uid)
+    await safe_edit_text(callback.message, text, parse_mode="HTML", reply_markup=markup, disable_web_page_preview=True)
+    await safe_callback_answer(callback)
+
+@dp.callback_query(F.data == "goto_live")
+async def goto_live(callback: CallbackQuery):
+    uid = str(callback.from_user.id)
+    data = get_user_sub(uid)
+    city = data.get("city")
+    if city:
+        day_index = moscow_now().weekday()
+        text, markup = render_live_day(city, day_index, uid)
+        await safe_edit_text(callback.message, text, parse_mode="HTML", reply_markup=markup)
+    else:
+        builder = InlineKeyboardBuilder()
+        for c in POPULAR_CITIES:
+            cid = city_to_id.get(c, c)
+            builder.button(text=c, callback_data=f"live_city_{cid}")
+        builder.adjust(2)
+        builder.row(InlineKeyboardButton(text="🔍 Найти город", callback_data="live_search_city"))
+        await safe_edit_text(callback.message, "🏙 Выберите город:", reply_markup=builder.as_markup())
+    await safe_callback_answer(callback)
+
+# Изменение интервала напоминаний
+@dp.callback_query(F.data == "change_reminder")
+async def change_reminder(callback: CallbackQuery):
+    uid = str(callback.from_user.id)
+    data = get_user_sub(uid)
+    current = data.get("reminder_minutes", [60])
+    builder = InlineKeyboardBuilder()
+    if 60 in current and 120 in current:
+        selected = "both"
+    elif 120 in current:
+        selected = "120"
+    else:
+        selected = "60"
+    builder.row(InlineKeyboardButton(text=f"{'✅ ' if selected == '60' else ''}За час", callback_data="set_reminder_60"))
+    builder.row(InlineKeyboardButton(text=f"{'✅ ' if selected == '120' else ''}За два часа", callback_data="set_reminder_120"))
+    builder.row(InlineKeyboardButton(text=f"{'✅ ' if selected == 'both' else ''}За час и за два", callback_data="set_reminder_both"))
+    builder.row(InlineKeyboardButton(text="← Назад", callback_data="sub_back_to_list"))
+    await safe_edit_text(callback.message, "⏰ Выберите, за сколько времени до группы присылать напоминания:",
+                         reply_markup=builder.as_markup())
+    await safe_callback_answer(callback)
+
+@dp.callback_query(F.data.startswith("set_reminder_"))
+async def set_reminder(callback: CallbackQuery):
+    val = callback.data.split("_")[-1]
+    uid = str(callback.from_user.id)
+    data = get_user_sub(uid)
+    if val == "both":
+        data["reminder_minutes"] = [60, 120]
+    elif val == "60":
+        data["reminder_minutes"] = [60]
+    elif val == "120":
+        data["reminder_minutes"] = [120]
+    set_user_sub(uid, data)
+    text, markup = render_subscriptions(uid)
+    await safe_edit_text(callback.message, text, parse_mode="HTML", reply_markup=markup)
+    await safe_callback_answer(callback, "Настройки сохранены")
 
 # --- Fallback ---
 @dp.message()
