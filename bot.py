@@ -764,7 +764,7 @@ def build_live_single_reminder(name: str, address: str, start: str, is_work_meet
 
 
 def build_live_multi_reminder(start: str, items: list[tuple[str, str, bool]], minutes_before: int = 60) -> str:
-    before_text = "за час" if minutes_before == 60 else "за два часа"
+    before_text = "за час" if minutes_before == 60 else "через два часа"
     text = [
         f"Привет! Это бережное напоминание: {before_text} начнутся живые группы.",
         "",
