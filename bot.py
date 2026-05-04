@@ -927,7 +927,6 @@ async def notifications_worker(bot: Bot):
         await asyncio.sleep(CHECK_INTERVAL_SECONDS)
 
 
-# ========== Временные сообщения ==========
 async def delete_message_after(message: Message, delay: int):
     await asyncio.sleep(delay)
     try:
@@ -937,7 +936,6 @@ async def delete_message_after(message: Message, delay: int):
 
 
 async def send_temp_message(target: Message | CallbackQuery, text: str, delete_after: int = 5, **kwargs):
-    """Отправляет временное сообщение и удаляет его через delete_after секунд."""
     if isinstance(target, CallbackQuery):
         msg = await target.message.answer(text, **kwargs)
     else:
@@ -945,7 +943,6 @@ async def send_temp_message(target: Message | CallbackQuery, text: str, delete_a
     asyncio.create_task(delete_message_after(msg, delete_after))
 
 
-# ========== Обработчики reply-кнопок ==========
 @dp.message(F.text == "📅 Расписание")
 async def schedule_reply(message: Message):
     keyboard = InlineKeyboardMarkup(
@@ -955,11 +952,7 @@ async def schedule_reply(message: Message):
             [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main_menu")],
         ]
     )
-    await message.answer(
-        "📅 Выберите тип расписания:",
-        reply_markup=keyboard,
-        reply_markup=main_menu_reply,
-    )
+    await message.answer("📅 Выберите тип расписания:", reply_markup=keyboard)
 
 
 @dp.message(F.text == "🔔 Мои подписки")
@@ -998,7 +991,7 @@ async def my_subscriptions_reply(message: Message):
         builder.row(InlineKeyboardButton(text="➕ Добавить первую подписку", callback_data="my_add_subscription"))
     builder.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main_menu"))
 
-    await message.answer(text, parse_mode="HTML", reply_markup=builder.as_markup(), reply_markup=main_menu_reply)
+    await message.answer(text, parse_mode="HTML", reply_markup=builder.as_markup())
 
 
 @dp.message(F.text == "💫 Установка")
@@ -1006,8 +999,7 @@ async def slogan_reply(message: Message):
     slogan = random.choice(SLOGANS_AND_AFFIRMATIONS)
     await message.answer(
         f"<b>Установка</b>\n<i>{escape_html(slogan)}</i>",
-        parse_mode="HTML",
-        reply_markup=main_menu_reply
+        parse_mode="HTML"
     )
 
 
@@ -1021,22 +1013,14 @@ async def unsubscribe_reply(message: Message):
     await message.answer(
         "⚠️ <b>Внимание!</b>\n\nВы действительно хотите отписаться от ВСЕХ групп?\n\nПосле этого вы перестанете получать уведомления.",
         parse_mode="HTML",
-        reply_markup=builder.as_markup(),
-        reply_markup=main_menu_reply
+        reply_markup=builder.as_markup()
     )
 
 
-# ========== Inline обработчики ==========
 @dp.callback_query(F.data == "back_to_main_menu")
 async def back_to_main_menu(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "🏠 Главное меню",
-        reply_markup=None
-    )
-    await callback.message.answer(
-        "Выберите действие:",
-        reply_markup=main_menu_reply
-    )
+    await callback.message.edit_text("🏠 Главное меню", reply_markup=None)
+    await callback.message.answer("Выберите действие:", reply_markup=main_menu_reply)
     await safe_callback_answer(callback)
 
 
@@ -1300,8 +1284,7 @@ async def live_search_city_handle(message: Message, state: FSMContext):
         await message.answer(
             f"🏙 <b>{escape_html(city)}</b>\nВыберите:",
             parse_mode="HTML",
-            reply_markup=live_period_keyboard(city, cid),
-            reply_markup=main_menu_reply
+            reply_markup=live_period_keyboard(city, cid)
         )
     else:
         builder = InlineKeyboardBuilder()
@@ -1310,10 +1293,9 @@ async def live_search_city_handle(message: Message, state: FSMContext):
             builder.button(text=c, callback_data=f"live_city_{cid}")
         builder.adjust(1)
         builder.row(InlineKeyboardButton(text="← Назад", callback_data="back_to_schedule_type"))
-        await message.answer("🔍 Уточните город:", reply_markup=builder.as_markup(), reply_markup=main_menu_reply)
+        await message.answer("🔍 Уточните город:", reply_markup=builder.as_markup())
 
 
-# ========== Подписки (добавление, управление, настройки) ==========
 @dp.callback_query(F.data == "my_add_subscription")
 async def my_add_subscription(callback: CallbackQuery):
     keyboard = InlineKeyboardMarkup(
@@ -1484,7 +1466,6 @@ async def my_settings_menu(callback: CallbackQuery):
     await safe_callback_answer(callback)
 
 
-# ========== Добавление подписок (онлайн/живые) ==========
 @dp.callback_query(F.data == "sub_online")
 async def sub_online_list(callback: CallbackQuery):
     uid = str(callback.from_user.id)
@@ -1599,7 +1580,6 @@ async def sub_live_city_input(message: Message, state: FSMContext):
     data["city"] = city
     set_user_sub(uid, data)
     await send_temp_message(message, f"✅ Выбран город: <b>{escape_html(city)}</b>\n\nТеперь можно подписаться на группы.", parse_mode="HTML", delete_after=5)
-    # показать список групп
     await show_sub_live_list_from_message(message, city)
 
 
@@ -1633,10 +1613,9 @@ async def show_sub_live_list_from_message(message: Message, city: str):
     else:
         text += "Нажмите ➕, чтобы добавить, или ✅, чтобы отписаться:"
 
-    await message.answer(text, parse_mode="HTML", reply_markup=builder.as_markup(), reply_markup=main_menu_reply)
+    await message.answer(text, parse_mode="HTML", reply_markup=builder.as_markup())
 
 
-# ========== Переключение подписок ==========
 @dp.callback_query(F.data == "sub_toggle_online_all")
 async def sub_toggle_online_all(callback: CallbackQuery):
     uid = str(callback.from_user.id)
@@ -1757,7 +1736,6 @@ async def sub_live_city_selected(callback: CallbackQuery):
     await show_sub_live_list(callback, city)
 
 
-# ========== Настройки уведомлений (инлайн) ==========
 @dp.callback_query(F.data == "sub_settings_online")
 async def sub_settings_online(callback: CallbackQuery):
     await settings_menu(callback, "online")
@@ -1864,7 +1842,6 @@ async def set_remind(callback: CallbackQuery):
     await settings_menu(callback, group_type)
 
 
-# ========== Прочие команды и отмена ==========
 @dp.callback_query(F.data == "confirm_unsubscribe_all")
 async def confirm_unsubscribe_all(callback: CallbackQuery):
     uid = str(callback.from_user.id)
