@@ -1017,6 +1017,9 @@ async def unsubscribe_reply(message: Message):
     )
 
 
+dp = Dispatcher(storage=MemoryStorage())
+
+
 @dp.callback_query(F.data == "back_to_main_menu")
 async def back_to_main_menu(callback: CallbackQuery):
     await callback.message.edit_text("🏠 Главное меню", reply_markup=None)
@@ -1083,6 +1086,16 @@ def live_period_keyboard(city: str, cid: str):
     return builder.as_markup()
 
 
+def get_days_keyboard(prefix: str, back_callback: str, back_text: str = "← Назад"):
+    builder = InlineKeyboardBuilder()
+    for i, day_name in enumerate(DAYS):
+        builder.button(text=day_name, callback_data=f"{prefix}{i}")
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text=back_text, callback_data=back_callback))
+    builder.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main_menu"))
+    return builder.as_markup()
+
+
 @dp.callback_query(F.data.startswith("live_city_"))
 async def process_city(callback: CallbackQuery):
     cid = callback.data[len("live_city_"):]
@@ -1141,16 +1154,6 @@ async def online_choose_day(callback: CallbackQuery):
     keyboard = get_days_keyboard("online_day_", back_callback="schedule_online", back_text="← Назад")
     await callback.message.edit_text("📆 Выберите день:", reply_markup=keyboard)
     await safe_callback_answer(callback)
-
-
-def get_days_keyboard(prefix: str, back_callback: str, back_text: str = "← Назад"):
-    builder = InlineKeyboardBuilder()
-    for i, day_name in enumerate(DAYS):
-        builder.button(text=day_name, callback_data=f"{prefix}{i}")
-    builder.adjust(2)
-    builder.row(InlineKeyboardButton(text=back_text, callback_data=back_callback))
-    builder.row(InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_main_menu"))
-    return builder.as_markup()
 
 
 @dp.callback_query(F.data.startswith("online_day_"))
