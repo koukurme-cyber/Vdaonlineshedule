@@ -750,7 +750,7 @@ def build_online_multi_reminder(time_str: str, items: list[tuple[str, str]], min
 
 def build_live_single_reminder(name: str, address: str, start: str, is_work_meeting: bool, minutes_before: int = 60) -> str:
     label = " 🔧" if is_work_meeting else ""
-    before_text = "черрез час" if minutes_before == 60 else "через два часа"
+    before_text = "через час" if minutes_before == 60 else "через два часа"
     return (
         f"Привет! Это бережное напоминание: {before_text} начнётся живая группа.\n\n"
         f"🏙 <b>{escape_html(name)}</b>{label}\n"
@@ -1006,12 +1006,10 @@ dp = Dispatcher(storage=MemoryStorage())
 
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
-    # Постоянная клавиатура
     await message.answer(
         "Добро пожаловать! Используйте кнопки ниже или меню в сообщении.",
         reply_markup=reply_main_menu
     )
-    # Инлайн‑меню
     await message.answer(
         "🏠 Главное меню\n\nВыберите раздел:",
         reply_markup=main_menu_inline_keyboard()
@@ -1462,7 +1460,7 @@ async def settings_menu(target, group_type: str):
 @dp.callback_query(F.data.startswith("set_daily_hour_"))
 async def set_daily_hour(callback: CallbackQuery):
     parts = callback.data.split("_")
-    group_type = parts[3]   # online / live
+    group_type = parts[3]
     hour = int(parts[4])
     uid = str(callback.from_user.id)
     data = get_user_sub(uid)
@@ -1477,8 +1475,8 @@ async def set_daily_hour(callback: CallbackQuery):
 @dp.callback_query(F.data.startswith("set_remind_"))
 async def set_remind(callback: CallbackQuery):
     parts = callback.data.split("_")
-    group_type = parts[2]   # online / live
-    option = parts[3]       # 1 / 2 / both
+    group_type = parts[2]
+    option = parts[3]
     uid = str(callback.from_user.id)
     data = get_user_sub(uid)
     if option == "1":
@@ -1752,6 +1750,10 @@ async def main():
         print("❌ BOT_TOKEN не задан")
         return
     bot = Bot(token=BOT_TOKEN)
+    
+    # 🔧 ИСПРАВЛЕНИЕ: удаляем webhook перед запуском поллинга
+    await bot.delete_webhook(drop_pending_updates=True)
+    
     asyncio.create_task(notifications_worker(bot))
     print("✅ Бот запущен")
     await dp.start_polling(bot)
