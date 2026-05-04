@@ -221,16 +221,13 @@ class SubCitySearch(StatesGroup):
 REPLY_MAIN_MENU = ReplyKeyboardMarkup(
     keyboard=[
         [
-            KeyboardButton(text="🌐 Онлайн"),
-            KeyboardButton(text="🏙 Живые"),
-            KeyboardButton(text="🔔 Подписки"),
+            KeyboardButton(text="🌐 Онлайн-встречи"),
+            KeyboardButton(text="🏙 Живые встречи"),
         ],
         [
-            KeyboardButton(text="⭐ Мои группы"),
-            KeyboardButton(text="⚙️ Настройки"),
+            KeyboardButton(text="🔔 Мои подписки"),
             KeyboardButton(text="💫 Установка"),
         ],
-        [KeyboardButton(text="❌ Отписаться от всего")],
     ],
     resize_keyboard=True,
     is_persistent=True,
@@ -667,20 +664,24 @@ def back_markup(text: str, callback_data: str) -> InlineKeyboardMarkup:
 def build_main_menu_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="🌐 Онлайн", callback_data="mainonline"),
-        InlineKeyboardButton(text="🏙 Живые", callback_data="mainlive"),
+        InlineKeyboardButton(text="🌐 Онлайн-встречи", callback_data="mainonline"),
+        InlineKeyboardButton(text="🏙 Живые встречи", callback_data="mainlive"),
     )
     builder.row(
-        InlineKeyboardButton(text="🔔 Подписки", callback_data="mainsub"),
-        InlineKeyboardButton(text="⚙️ Настройки", callback_data="mainsettings"),
-    )
-    builder.row(
-        InlineKeyboardButton(text="⭐ Мои группы", callback_data="mainmygroups"),
+        InlineKeyboardButton(text="🔔 Мои подписки", callback_data="mainsub"),
         InlineKeyboardButton(text="💫 Установка", callback_data="mainslogan"),
     )
-    builder.row(InlineKeyboardButton(text="❌ Отписаться от всего", callback_data="mainunsubscribe"))
     return builder.as_markup()
 
+
+def build_live_root_keyboard(user_data: Optional[dict] = None) -> InlineKeyboardMarkup:
+    user_data = user_data or {}
+    builder = InlineKeyboardBuilder()
+    if user_data.get("city"):
+        builder.row(InlineKeyboardButton(text=f"🏙 Мой город: {user_data['city']}", callback_data="livemycity"))
+    builder.row(InlineKeyboardButton(text="🔍 Выбрать город", callback_data="livechoosecity"))
+    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
+    return builder.as_markup()
 
 def build_online_menu_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
@@ -689,10 +690,9 @@ def build_online_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="📋 Вся неделя", callback_data="onlinefull"),
     )
     builder.row(InlineKeyboardButton(text="📆 Выбрать день", callback_data="onlinechooseday"))
-    builder.row(InlineKeyboardButton(text="🔔 Подписки", callback_data="subonline"))
+    builder.row(InlineKeyboardButton(text="🔔 Настроить подписки", callback_data="subonline"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
-
 
 def build_live_city_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
@@ -730,13 +730,12 @@ def get_days_keyboard(prefix: str, back_callback: str, back_text: str = "← Н�
 
 def build_subscriptions_menu() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="⭐ Список моих групп", callback_data="mainmygroups"))
+    builder.row(InlineKeyboardButton(text="⚙️ Настройки уведомлений", callback_data="settingsroot"))
     builder.row(
-        InlineKeyboardButton(text="🌐 Онлайн", callback_data="subonline"),
-        InlineKeyboardButton(text="🏙 Живые", callback_data="sublive"),
+        InlineKeyboardButton(text="🌐 Онлайн-подписки", callback_data="subonline"),
+        InlineKeyboardButton(text="🏙 Живые подписки", callback_data="sublive"),
     )
-    builder.row(InlineKeyboardButton(text="⭐ Мои группы", callback_data="mainmygroups"))
-    builder.row(InlineKeyboardButton(text="⚙️ Настройки онлайн", callback_data="subsettingsonline"))
-    builder.row(InlineKeyboardButton(text="⚙️ Настройки живых", callback_data="subsettingslive"))
     builder.row(InlineKeyboardButton(text="🔕 Отписаться от всего", callback_data="mainunsubscribe"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
@@ -748,6 +747,7 @@ def build_settings_root_menu() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🌐 Онлайн", callback_data="subsettingsonline"),
         InlineKeyboardButton(text="🏙 Живые", callback_data="subsettingslive"),
     )
+    builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
@@ -1125,14 +1125,14 @@ DP = Dispatcher(storage=MemoryStorage())
 
 @DP.message(Command("start"))
 async def cmd_start(message: Message):
-    await message.answer("Добро пожаловать. Выберите раздел ниже.", reply_markup=REPLY_MAIN_MENU)
-    await message.answer("🏠 <b>Главное меню</b>", parse_mode=HTML_MODE, reply_markup=build_main_menu_keyboard())
+    await message.answer("Выберите раздел ниже.", reply_markup=REPLY_MAIN_MENU)
+    await message.answer("🏠 <b>Главное меню</b>\n\n🌐 Онлайн-встречи — Telegram / Zoom / MAX\n🏙 Живые встречи — очно в выбранном городе", parse_mode=HTML_MODE, reply_markup=build_main_menu_keyboard())
 
 
 @DP.message(Command("help"))
 async def cmd_help(message: Message):
     await message.answer(
-        "<b>Команды</b>\n\n/start — главное меню\n/help — помощь\n/slogan — случайная фраза поддержки",
+        "<b>Команды</b>\n\n/start — главное меню\n/help — помощь\n/slogan — случайная фраза поддержки\n\nГлавные разделы: онлайн-встречи, живые встречи, мои подписки, установка.",
         parse_mode=HTML_MODE,
         reply_markup=back_markup("⬅️ Главное меню", "mainmenu"),
     )
@@ -1149,17 +1149,32 @@ async def cmd_slogan(message: Message):
 
 @DP.callback_query(F.data == "mainmenu")
 async def main_menu_callback(callback: CallbackQuery):
-    await send_or_edit(callback, "🏠 <b>Главное меню</b>", parse_mode=HTML_MODE, reply_markup=build_main_menu_keyboard())
+    await send_or_edit(callback, "🏠 <b>Главное меню</b>\n\n🌐 Онлайн-встречи — Telegram / Zoom / MAX\n🏙 Живые встречи — очно в выбранном городе", parse_mode=HTML_MODE, reply_markup=build_main_menu_keyboard())
 
 
 @DP.callback_query(F.data == "mainonline")
 async def main_online_callback(callback: CallbackQuery):
-    await send_or_edit(callback, "🌐 Онлайн-расписание", parse_mode=HTML_MODE, reply_markup=build_online_menu_keyboard())
+    await send_or_edit(callback, "🌐 <b>Онлайн-встречи</b>\n\nПроходят в Telegram / Zoom / MAX.", parse_mode=HTML_MODE, reply_markup=build_online_menu_keyboard())
 
 
 @DP.callback_query(F.data == "mainlive")
 async def main_live_callback(callback: CallbackQuery):
+    await send_or_edit(callback, "🏙 <b>Живые встречи</b>\n\nПроходят очно в выбранном городе.", parse_mode=HTML_MODE, reply_markup=build_live_root_keyboard(get_user_sub(str(callback.from_user.id))))
+
+
+@DP.callback_query(F.data == "livechoosecity")
+async def live_choose_city_callback(callback: CallbackQuery):
     await send_or_edit(callback, "🏙 Выберите город:", parse_mode=HTML_MODE, reply_markup=build_live_city_keyboard())
+
+
+@DP.callback_query(F.data == "livemycity")
+async def live_my_city_callback(callback: CallbackQuery):
+    user_data = get_user_sub(str(callback.from_user.id))
+    city = user_data.get("city")
+    if not city:
+        await send_or_edit(callback, "🏙 Город ещё не выбран.", parse_mode=HTML_MODE, reply_markup=build_live_city_keyboard())
+        return
+    await send_or_edit(callback, f"🏙 <b>{escape_html(city)}</b>", parse_mode=HTML_MODE, reply_markup=live_period_keyboard(city))
 
 
 @DP.callback_query(F.data == "mainslogan")
@@ -1328,6 +1343,11 @@ async def sub_toggle_live(callback: CallbackQuery):
         await show_sub_live_city_selector(callback)
 
 
+@DP.callback_query(F.data == "settingsroot")
+async def settings_root_callback(callback: CallbackQuery):
+    await send_or_edit(callback, "⚙️ <b>Настройки уведомлений</b>", parse_mode=HTML_MODE, reply_markup=build_settings_root_menu())
+
+
 @DP.callback_query(F.data == "subsettingsonline")
 async def sub_settings_online(callback: CallbackQuery):
     await settings_menu(callback, "online")
@@ -1398,7 +1418,7 @@ async def online_show_day(callback: CallbackQuery):
 
 @DP.callback_query(F.data == "modelive")
 async def back_to_live(callback: CallbackQuery):
-    await send_or_edit(callback, "🏙 Выберите город:", parse_mode=HTML_MODE, reply_markup=build_live_city_keyboard())
+    await send_or_edit(callback, "🏙 <b>Живые встречи</b>\n\nПроходят очно в выбранном городе.", parse_mode=HTML_MODE, reply_markup=build_live_root_keyboard(get_user_sub(str(callback.from_user.id))))
 
 
 @DP.callback_query(F.data == "livesearchcity")
@@ -1491,16 +1511,19 @@ async def live_show_day(callback: CallbackQuery):
 
 
 @DP.message(F.text == "🌐 Онлайн")
+@DP.message(F.text == "🌐 Онлайн-встречи")
 async def btn_online(message: Message):
-    await message.answer("🌐 Онлайн-расписание", reply_markup=build_online_menu_keyboard())
+    await message.answer("🌐 <b>Онлайн-встречи</b>\n\nПроходят в Telegram / Zoom / MAX.", parse_mode=HTML_MODE, reply_markup=build_online_menu_keyboard())
 
 
 @DP.message(F.text == "🏙 Живые")
+@DP.message(F.text == "🏙 Живые встречи")
 async def btn_live(message: Message):
-    await message.answer("🏙 Выберите город:", reply_markup=build_live_city_keyboard())
+    await message.answer("🏙 <b>Живые встречи</b>\n\nПроходят очно в выбранном городе.", parse_mode=HTML_MODE, reply_markup=build_live_root_keyboard(get_user_sub(str(message.from_user.id))))
 
 
 @DP.message(F.text == "🔔 Подписки")
+@DP.message(F.text == "🔔 Мои подписки")
 async def btn_subscriptions(message: Message):
     await show_sub_main(message)
 
