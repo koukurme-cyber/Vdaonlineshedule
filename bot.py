@@ -390,8 +390,6 @@ def parse_live_schedule(raw_lines: str) -> List[dict]:
         if len(parts) < 5:
             continue
         country, city, name, address, time_str = parts[:5]
-        if country != "Россия":
-            continue
         entry_parts = re.split(r";|\\n|\n| и ", time_str.replace('"', ''))
         days = []
         for entry in entry_parts:
@@ -438,6 +436,7 @@ def parse_live_schedule(raw_lines: str) -> List[dict]:
                 })
         if days:
             groups.append({
+                "country": country.strip(),
                 "city": city.strip(),
                 "name": name.strip(),
                 "address": address.strip(),
