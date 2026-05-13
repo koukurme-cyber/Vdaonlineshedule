@@ -1296,7 +1296,7 @@ async def cmd_help(message: Message):
 @DP.message(Command("slogan"))
 async def cmd_slogan(message: Message):
     await message.answer(
-        f"<b>Установки</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
+        f"<b>Установка</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
         parse_mode=HTML_MODE,
         reply_markup=back_markup("⬅️ Главное меню", "mainmenu"),
     )
