@@ -739,7 +739,7 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
 CONTACTS_TEXT = (
     'По вопросам актуализации информации о группах пишите '
     '<a href="https://t.me/koukurme2022">сюда</a> '
-    'либо на <a href="https://adultchildren.ru/">официальный сайт РКО ВДА</a>.'
+    'либо на <a href="https://adultchildren.ru/contacts/">официальный сайт РКО ВДА</a>.'
 )
 
 
