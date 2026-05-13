@@ -320,6 +320,7 @@ def normalize_user_sub(data: Optional[dict]) -> dict:
     live_settings_raw = data.get("live_settings") if isinstance(data.get("live_settings"), dict) else data.get("livesettings")
 
     return {
+        "country": data.get("country") if isinstance(data.get("country"), str) else None,
         "city": data.get("city") if isinstance(data.get("city"), str) else None,
         "all_online": bool(data.get("all_online", data.get("allonline", False))),
         "all_live": bool(data.get("all_live", data.get("alllive", False))),
@@ -447,16 +448,51 @@ def parse_live_schedule(raw_lines: str) -> List[dict]:
 
 RAW_LIVE = read_live_source()
 LIVE_GROUPS = parse_live_schedule(RAW_LIVE) if RAW_LIVE else []
-CITY_TO_ID: Dict[str, str] = {}
-ID_TO_CITY: Dict[str, str] = {}
-for idx, city in enumerate(POPULAR_CITIES):
-    cid = str(idx)
-    CITY_TO_ID[city] = cid
-    ID_TO_CITY[cid] = city
-for city in sorted({g["city"] for g in LIVE_GROUPS if g["city"] not in CITY_TO_ID}):
-    cid = str(len(CITY_TO_ID))
-    CITY_TO_ID[city] = cid
-    ID_TO_CITY[cid] = city
+COUNTRY_TO_ID: Dict[str, str] = {}
+ID_TO_COUNTRY: Dict[str, str] = {}
+LOCATION_TO_ID: Dict[Tuple[str, str], str] = {}
+ID_TO_LOCATION: Dict[str, Tuple[str, str]] = {}
+CITY_TO_ID: Dict[str, str] = {}  # backward compatibility for old city-only callbacks
+ID_TO_CITY: Dict[str, str] = {}  # backward compatibility for old city-only callbacks
+
+for country in sorted({g["country"] for g in LIVE_GROUPS}):
+    country_id = str(len(COUNTRY_TO_ID))
+    COUNTRY_TO_ID[country] = country_id
+    ID_TO_COUNTRY[country_id] = country
+
+for country, city in sorted({(g["country"], g["city"]) for g in LIVE_GROUPS}, key=lambda x: (x[0].lower(), x[1].lower())):
+    location_id = str(len(LOCATION_TO_ID))
+    LOCATION_TO_ID[(country, city)] = location_id
+    ID_TO_LOCATION[location_id] = (country, city)
+    CITY_TO_ID.setdefault(city, location_id)
+    ID_TO_CITY.setdefault(location_id, city)
+
+
+def resolve_location_id(location_id: str) -> Tuple[Optional[str], str]:
+    if location_id in ID_TO_LOCATION:
+        return ID_TO_LOCATION[location_id]
+    return None, ID_TO_CITY.get(location_id, location_id)
+
+
+def get_location_id(city: str, country: Optional[str] = None) -> str:
+    if country and (country, city) in LOCATION_TO_ID:
+        return LOCATION_TO_ID[(country, city)]
+    for (known_country, known_city), location_id in LOCATION_TO_ID.items():
+        if known_city == city:
+            return location_id
+    return CITY_TO_ID.get(city, city)
+
+
+def get_country_city_label(country: Optional[str], city: str) -> str:
+    return f"{country}, {city}" if country and country != "Россия" else city
+
+
+def get_countries_with_live_groups() -> List[str]:
+    return sorted({g["country"] for g in LIVE_GROUPS}, key=lambda x: (x != "Россия", x.lower()))
+
+
+def get_cities_for_country(country: str) -> List[str]:
+    return sorted({g["city"] for g in LIVE_GROUPS if g["country"] == country}, key=str.lower)
 
 
 def make_short_id(prefix: str, name: str) -> str:
@@ -474,7 +510,7 @@ LIVE_GROUP_ID_TO_NAME = {}
 LIVE_GROUP_INFO = {}
 for group in LIVE_GROUPS:
     LIVE_GROUP_ID_TO_NAME.setdefault(make_short_id("l", group["name"]), group["name"])
-    LIVE_GROUP_INFO.setdefault(group["name"], {"city": group["city"], "address": group["address"]})
+    LIVE_GROUP_INFO.setdefault(group["name"], {"country": group["country"], "city": group["city"], "address": group["address"]})
     
 def normalize_city_name(city: str) -> str:
     aliases = {
@@ -488,26 +524,38 @@ def normalize_city_name(city: str) -> str:
     return aliases.get(city.lower().strip(), city.lower().strip())
 
 
-def get_searchable_cities(query: str) -> List[str]:
+def get_searchable_cities(query: str, country: Optional[str] = None) -> List[Tuple[str, str]]:
     query_lower = query.lower().strip()
     is_spb_search = query_lower in {"санкт-петербург", "спб", "питер", "петербург"}
-    matched, seen = [], set()
+    matched: List[Tuple[str, str]] = []
+    seen = set()
     for group in LIVE_GROUPS:
+        if country and group["country"] != country:
+            continue
+        group_country = group["country"]
         city = group["city"]
         city_lower = city.lower()
-        if query_lower in city_lower:
+        country_lower = group_country.lower()
+        label_lower = f"{country_lower} {city_lower}"
+        if query_lower in city_lower or query_lower in label_lower:
             if is_spb_search and any(suburb.lower() in city_lower and suburb.lower() != "санкт-петербург" for suburb in SPB_SUBURBS):
                 continue
-            if city not in seen:
-                matched.append(city)
-                seen.add(city)
+            key = (group_country, city)
+            if key not in seen:
+                matched.append(key)
+                seen.add(key)
     if not matched and not is_spb_search:
         for group in LIVE_GROUPS:
+            if country and group["country"] != country:
+                continue
+            group_country = group["country"]
             city = group["city"]
             city_lower = city.lower()
-            if any(query_lower in suburb.lower() and query_lower in city_lower for suburb in SPB_SUBURBS) and city not in seen:
-                matched.append(city)
-                seen.add(city)
+            if any(query_lower in suburb.lower() and query_lower in city_lower for suburb in SPB_SUBURBS):
+                key = (group_country, city)
+                if key not in seen:
+                    matched.append(key)
+                    seen.add(key)
     return matched
 
 
@@ -530,10 +578,12 @@ def day_entry_matches_date(day_entry, target_date):
     return week_of_month(target_date) == occurrence
 
 
-def get_live_groups_for_city(city: str) -> List[dict]:
+def get_live_groups_for_city(city: str, country: Optional[str] = None) -> List[dict]:
     city_norm = normalize_city_name(city)
     result = []
     for group in LIVE_GROUPS:
+        if country and group.get("country") != country:
+            continue
         group_city = normalize_city_name(group["city"])
         if city_norm in {"москва", "санкт-петербург"}:
             if group_city == city_norm or group_city.startswith(f"{city_norm},") or group_city.startswith(f"{city_norm} "):
@@ -543,22 +593,22 @@ def get_live_groups_for_city(city: str) -> List[dict]:
     return result
 
 
-def get_live_groups_for_day(city: str, day_index: int):
+def get_live_groups_for_day(city: str, day_index: int, country: Optional[str] = None):
     now = moscow_now()
     target_date = now.date() + timedelta(days=(day_index - now.weekday()) % 7)
     result = []
-    for group in get_live_groups_for_city(city):
+    for group in get_live_groups_for_city(city, country):
         for entry in group["days"]:
             if day_entry_matches_date(entry, target_date):
                 result.append((group["name"], group["address"], entry["start"], entry["end"], entry.get("is_work_meeting", False)))
     return sorted(result, key=lambda x: x[2])
 
 
-def get_live_week(city: str) -> str:
-    city_groups = get_live_groups_for_city(city)
+def get_live_week(city: str, country: Optional[str] = None) -> str:
+    city_groups = get_live_groups_for_city(city, country)
     if not city_groups:
         return f"В городе «{escape_html(city)}» живых групп не найдено."
-    parts = [f"🏙 Живые группы в {escape_html(city)}:"]
+    parts = [f"🏙 Живые группы: {escape_html(get_country_city_label(country, city))}:"]
     today = moscow_now().date()
     monday = today - timedelta(days=today.weekday())
     for offset in range(7):
@@ -677,8 +727,12 @@ def build_live_root_keyboard(user_data: Optional[dict] = None) -> InlineKeyboard
     user_data = user_data or {}
     builder = InlineKeyboardBuilder()
     if user_data.get("city"):
-        builder.row(InlineKeyboardButton(text=f"🏙 Мой город: {user_data['city']}", callback_data="livemycity"))
-    builder.row(InlineKeyboardButton(text="🔍 Выбрать город", callback_data="livechoosecity"))
+        builder.row(InlineKeyboardButton(
+            text=f"🏙 Мой город: {get_country_city_label(user_data.get('country'), user_data['city'])}",
+            callback_data="livemycity",
+        ))
+    builder.row(InlineKeyboardButton(text="🌍 Выбрать страну", callback_data="livechoosecountry"))
+    builder.row(InlineKeyboardButton(text="🔍 Найти город", callback_data="livesearchcity"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
@@ -693,26 +747,37 @@ def build_online_menu_keyboard() -> InlineKeyboardMarkup:
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
-def build_live_city_keyboard() -> InlineKeyboardMarkup:
+def build_live_country_keyboard(prefix: str = "livecountry", back_callback: str = "modelive") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for city in POPULAR_CITIES:
-        builder.button(text=city, callback_data=f"livecity{CITY_TO_ID.get(city, city)}")
+    for country in get_countries_with_live_groups():
+        builder.button(text=country, callback_data=f"{prefix}{COUNTRY_TO_ID[country]}")
     builder.adjust(2)
+    builder.row(InlineKeyboardButton(text="🔍 Найти город", callback_data="livesearchcity"))
+    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu" if back_callback == "modelive" else back_callback))
+    return builder.as_markup()
+
+
+def build_live_city_keyboard(country: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for city in get_cities_for_country(country):
+        builder.button(text=city, callback_data=f"livecity{get_location_id(city, country)}")
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text="← К странам", callback_data="livechoosecountry"))
     builder.row(InlineKeyboardButton(text="🔍 Найти город", callback_data="livesearchcity"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
 
-def live_period_keyboard(city: str) -> InlineKeyboardMarkup:
-    cid = CITY_TO_ID.get(city, city)
+def live_period_keyboard(city: str, country: Optional[str] = None) -> InlineKeyboardMarkup:
+    cid = get_location_id(city, country)
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="📅 Сегодня", callback_data=f"livetoday{cid}"),
         InlineKeyboardButton(text="📋 Вся неделя", callback_data=f"liveweek{cid}"),
     )
     builder.row(InlineKeyboardButton(text="📆 Выбрать день", callback_data=f"livechooseday{cid}"))
-    builder.row(InlineKeyboardButton(text="🔔 Подписки по городу", callback_data="sublive"))
-    builder.row(InlineKeyboardButton(text="← К городам", callback_data="modelive"))
+    builder.row(InlineKeyboardButton(text="🔔 Подписки по городу", callback_data=f"sublivecity{cid}"))
+    builder.row(InlineKeyboardButton(text="← К городам", callback_data=f"livecountry{COUNTRY_TO_ID[country]}" if country in COUNTRY_TO_ID else "livechoosecountry"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
@@ -858,7 +923,7 @@ def get_today_live_subscriptions(user_data: dict):
     city = user_data.get("city")
     if not city:
         return []
-    return [item for item in get_live_groups_for_day(city, moscow_now().weekday()) if is_user_subscribed_to_live(user_data, item[0])]
+    return [item for item in get_live_groups_for_day(city, moscow_now().weekday(), user_data.get("country")) if is_user_subscribed_to_live(user_data, item[0])]
 
 
 def build_daily_message(user_data: dict) -> Optional[str]:
@@ -954,7 +1019,7 @@ def collect_due_reminders(user_data: dict, now_dt: datetime):
     city = user_data.get("city")
     if city:
         live_due: Dict[Tuple[str, int], List[Tuple[str, str, bool]]] = {}
-        for name, address, start, _, is_work_meeting in get_live_groups_for_day(city, now_dt.weekday()):
+        for name, address, start, _, is_work_meeting in get_live_groups_for_day(city, now_dt.weekday(), user_data.get("country")):
             if not is_user_subscribed_to_live(user_data, name):
                 continue
             for minutes_before in get_live_settings(user_data)["remind_before"]:
@@ -1059,23 +1124,35 @@ async def show_sub_online_list(target: CallbackQuery | Message):
     await send_or_edit(target, "🌐 Онлайн-подписки\n\n🔔 — включено\n🔕 — выключено", parse_mode=HTML_MODE, reply_markup=builder.as_markup())
 
 
-async def show_sub_live_city_selector(target: CallbackQuery | Message):
+async def show_sub_live_country_selector(target: CallbackQuery | Message):
     builder = InlineKeyboardBuilder()
-    for city in POPULAR_CITIES:
-        builder.button(text=city, callback_data=f"sublivecity{CITY_TO_ID.get(city, city)}")
+    for country in get_countries_with_live_groups():
+        builder.button(text=country, callback_data=f"sublivecountry{COUNTRY_TO_ID[country]}")
     builder.adjust(2)
     builder.row(InlineKeyboardButton(text="🔍 Найти город", callback_data="sublivecitysearch"))
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
-    await send_or_edit(target, "🏙 Выберите город для живых подписок:", reply_markup=builder.as_markup())
+    await send_or_edit(target, "🌍 Выберите страну для живых подписок:", reply_markup=builder.as_markup())
 
 
-async def show_sub_live_list(target: CallbackQuery | Message, city: str):
+async def show_sub_live_city_selector(target: CallbackQuery | Message, country: str):
+    builder = InlineKeyboardBuilder()
+    for city in get_cities_for_country(country):
+        builder.button(text=city, callback_data=f"sublivecity{get_location_id(city, country)}")
+    builder.adjust(2)
+    builder.row(InlineKeyboardButton(text="← К странам", callback_data="sublivecitychange"))
+    builder.row(InlineKeyboardButton(text="🔍 Найти город", callback_data="sublivecitysearch"))
+    builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
+    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
+    await send_or_edit(target, f"🏙 Выберите город: <b>{escape_html(country)}</b>", parse_mode=HTML_MODE, reply_markup=builder.as_markup())
+
+
+async def show_sub_live_list(target: CallbackQuery | Message, city: str, country: Optional[str] = None):
     user_data = get_user_sub(str(target.from_user.id))
     builder = InlineKeyboardBuilder()
     all_prefix = "🔔" if user_data.get("all_live") else "🔕"
     builder.row(InlineKeyboardButton(text=f"{all_prefix} Все живые в этом городе", callback_data="subtoggleliveall"))
-    group_names = sorted({g["name"] for g in get_live_groups_for_city(city)}, key=str.lower)
+    group_names = sorted({g["name"] for g in get_live_groups_for_city(city, country)}, key=str.lower)
     if not group_names:
         builder.row(InlineKeyboardButton(text="🏙 Сменить город", callback_data="sublivecitychange"))
         builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
@@ -1161,9 +1238,16 @@ async def main_live_callback(callback: CallbackQuery):
     await send_or_edit(callback, "🏙 <b>Живые встречи</b>\n\nПроходят очно в выбранном городе.", parse_mode=HTML_MODE, reply_markup=build_live_root_keyboard(get_user_sub(str(callback.from_user.id))))
 
 
-@DP.callback_query(F.data == "livechoosecity")
+@DP.callback_query(F.data == "livechoosecountry")
+async def live_choose_country_callback(callback: CallbackQuery):
+    await send_or_edit(callback, "🌍 Выберите страну:", parse_mode=HTML_MODE, reply_markup=build_live_country_keyboard())
+
+
+@DP.callback_query(F.data.startswith("livecountry"))
 async def live_choose_city_callback(callback: CallbackQuery):
-    await send_or_edit(callback, "🏙 Выберите город:", parse_mode=HTML_MODE, reply_markup=build_live_city_keyboard())
+    country_id = callback.data[len("livecountry"):]
+    country = ID_TO_COUNTRY.get(country_id, country_id)
+    await send_or_edit(callback, f"🏙 Выберите город: <b>{escape_html(country)}</b>", parse_mode=HTML_MODE, reply_markup=build_live_city_keyboard(country))
 
 
 @DP.callback_query(F.data == "livemycity")
@@ -1171,9 +1255,9 @@ async def live_my_city_callback(callback: CallbackQuery):
     user_data = get_user_sub(str(callback.from_user.id))
     city = user_data.get("city")
     if not city:
-        await send_or_edit(callback, "🏙 Город ещё не выбран.", parse_mode=HTML_MODE, reply_markup=build_live_city_keyboard())
+        await send_or_edit(callback, "🏙 Город ещё не выбран.", parse_mode=HTML_MODE, reply_markup=build_live_country_keyboard())
         return
-    await send_or_edit(callback, f"🏙 <b>{escape_html(city)}</b>", parse_mode=HTML_MODE, reply_markup=live_period_keyboard(city))
+    await send_or_edit(callback, f"🏙 <b>{escape_html(get_country_city_label(user_data.get('country'), city))}</b>", parse_mode=HTML_MODE, reply_markup=live_period_keyboard(city, user_data.get("country")))
 
 
 @DP.callback_query(F.data == "mainslogan")
@@ -1222,15 +1306,23 @@ async def sub_online_list(callback: CallbackQuery):
 async def sub_live_start(callback: CallbackQuery):
     user_data = get_user_sub(str(callback.from_user.id))
     city = user_data.get("city")
+    country = user_data.get("country")
     if city:
-        await show_sub_live_list(callback, city)
+        await show_sub_live_list(callback, city, country)
     else:
-        await show_sub_live_city_selector(callback)
+        await show_sub_live_country_selector(callback)
 
 
 @DP.callback_query(F.data == "sublivecitychange")
 async def sub_live_city_change(callback: CallbackQuery):
-    await show_sub_live_city_selector(callback)
+    await show_sub_live_country_selector(callback)
+
+
+@DP.callback_query(F.data.startswith("sublivecountry"))
+async def sub_live_country_selected(callback: CallbackQuery):
+    country_id = callback.data[len("sublivecountry"):]
+    country = ID_TO_COUNTRY.get(country_id, country_id)
+    await show_sub_live_city_selector(callback, country)
 
 
 @DP.callback_query(F.data == "sublivecitysearch")
@@ -1246,13 +1338,14 @@ async def sub_live_city_input(message: Message, state: FSMContext):
     if not matched:
         await message.answer("Город не найден.", reply_markup=back_markup("← К подпискам", "submainback"))
         return
-    city = matched[0]
+    country, city = matched[0]
     uid = str(message.from_user.id)
     user_data = get_user_sub(uid)
+    user_data["country"] = country
     user_data["city"] = city
     set_user_sub(uid, user_data)
-    await message.answer(f"Выбран город: <b>{escape_html(city)}</b>", parse_mode=HTML_MODE)
-    await show_sub_live_list(message, city)
+    await message.answer(f"Выбран город: <b>{escape_html(get_country_city_label(country, city))}</b>", parse_mode=HTML_MODE)
+    await show_sub_live_list(message, city, country)
 
 
 @DP.callback_query(F.data.startswith("sublivecity"))
@@ -1260,12 +1353,13 @@ async def sub_live_city_selected(callback: CallbackQuery):
     cid = callback.data[len("sublivecity"):]
     if cid == "search":
         return
-    city = ID_TO_CITY.get(cid, cid)
+    country, city = resolve_location_id(cid)
     uid = str(callback.from_user.id)
     user_data = get_user_sub(uid)
+    user_data["country"] = country
     user_data["city"] = city
     set_user_sub(uid, user_data)
-    await show_sub_live_list(callback, city)
+    await show_sub_live_list(callback, city, country)
 
 
 @DP.callback_query(F.data == "subtoggleonlineall")
@@ -1308,14 +1402,14 @@ async def sub_toggle_live_all(callback: CallbackQuery):
     city = user_data.get("city")
     if not city:
         await safe_callback_answer(callback, "Сначала выберите город")
-        await show_sub_live_city_selector(callback)
+        await show_sub_live_country_selector(callback)
         return
     user_data["all_live"] = not user_data.get("all_live", False)
     if user_data["all_live"]:
         user_data["groups"] = {k: v for k, v in user_data["groups"].items() if v.get("type") != "live"}
     set_user_sub(uid, user_data)
     await safe_callback_answer(callback, "Готово")
-    await show_sub_live_list(callback, city)
+    await show_sub_live_list(callback, city, user_data.get("country"))
 
 
 @DP.callback_query(F.data.startswith("subtogglelive"))
@@ -1337,9 +1431,9 @@ async def sub_toggle_live(callback: CallbackQuery):
     await safe_callback_answer(callback, "Готово")
     city = user_data.get("city")
     if city:
-        await show_sub_live_list(callback, city)
+        await show_sub_live_list(callback, city, user_data.get("country"))
     else:
-        await show_sub_live_city_selector(callback)
+        await show_sub_live_country_selector(callback)
 
 
 @DP.callback_query(F.data == "settingsroot")
@@ -1431,35 +1525,35 @@ async def live_search_city_handle(message: Message, state: FSMContext):
     await state.clear()
     matched = get_searchable_cities((message.text or "").strip())
     if not matched:
-        await message.answer("Город не найден.", reply_markup=back_markup("← К городам", "modelive"))
+        await message.answer("Город не найден.", reply_markup=back_markup("← К странам", "livechoosecountry"))
         return
     if len(matched) == 1:
-        city = matched[0]
-        await message.answer(f"🏙 <b>{escape_html(city)}</b>", parse_mode=HTML_MODE, reply_markup=live_period_keyboard(city))
+        country, city = matched[0]
+        await message.answer(f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>", parse_mode=HTML_MODE, reply_markup=live_period_keyboard(city, country))
         return
     builder = InlineKeyboardBuilder()
-    for city in matched[:20]:
-        builder.button(text=city, callback_data=f"livecity{CITY_TO_ID.get(city, city)}")
+    for country, city in matched[:20]:
+        builder.button(text=get_country_city_label(country, city), callback_data=f"livecity{get_location_id(city, country)}")
     builder.adjust(1)
-    builder.row(InlineKeyboardButton(text="← К городам", callback_data="modelive"))
+    builder.row(InlineKeyboardButton(text="← К странам", callback_data="livechoosecountry"))
     await message.answer("🔍 Уточните город:", reply_markup=builder.as_markup())
 
 
 @DP.callback_query(F.data.startswith("livecity"))
 async def process_city(callback: CallbackQuery):
     cid = callback.data[len("livecity"):]
-    city = ID_TO_CITY.get(cid, cid)
-    await send_or_edit(callback, f"🏙 <b>{escape_html(city)}</b>", parse_mode=HTML_MODE, reply_markup=live_period_keyboard(city))
+    country, city = resolve_location_id(cid)
+    await send_or_edit(callback, f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>", parse_mode=HTML_MODE, reply_markup=live_period_keyboard(city, country))
 
 
 @DP.callback_query(F.data.startswith("livetoday"))
 async def live_today(callback: CallbackQuery):
     cid = callback.data[len("livetoday"):]
-    city = ID_TO_CITY.get(cid, cid)
+    country, city = resolve_location_id(cid)
     user_data = get_user_sub(str(callback.from_user.id))
     day_index = moscow_now().weekday()
-    groups = get_live_groups_for_day(city, day_index)
-    text = f"🏙 <b>{escape_html(city)}</b>\n\n{format_day_header(DAYS[day_index])}\n\n"
+    groups = get_live_groups_for_day(city, day_index, country)
+    text = f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>\n\n{format_day_header(DAYS[day_index])}\n\n"
     text += "\n".join(format_live_group_with_sub(n, a, s, e, w, user_data) for n, a, s, e, w in groups) if groups else "Нет групп."
     await send_or_edit(callback, text, parse_mode=HTML_MODE, reply_markup=back_markup("← К городу", f"liveperiod{cid}"))
 
@@ -1467,11 +1561,11 @@ async def live_today(callback: CallbackQuery):
 @DP.callback_query(F.data.startswith("liveweek"))
 async def live_week(callback: CallbackQuery):
     cid = callback.data[len("liveweek"):]
-    city = ID_TO_CITY.get(cid, cid)
+    country, city = resolve_location_id(cid)
     await send_long_text(
         callback,
         "📋 Живые группы на неделю:",
-        get_live_week(city),
+        get_live_week(city, country),
         final_markup=back_markup("← К городу", f"liveperiod{cid}"),
         parse_mode=HTML_MODE,
     )
@@ -1480,17 +1574,17 @@ async def live_week(callback: CallbackQuery):
 @DP.callback_query(F.data.startswith("liveperiod"))
 async def live_period(callback: CallbackQuery):
     cid = callback.data[len("liveperiod"):]
-    city = ID_TO_CITY.get(cid, cid)
-    await send_or_edit(callback, f"🏙 <b>{escape_html(city)}</b>", parse_mode=HTML_MODE, reply_markup=live_period_keyboard(city))
+    country, city = resolve_location_id(cid)
+    await send_or_edit(callback, f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>", parse_mode=HTML_MODE, reply_markup=live_period_keyboard(city, country))
 
 
 @DP.callback_query(F.data.startswith("livechooseday"))
 async def live_choose_day(callback: CallbackQuery):
     cid = callback.data[len("livechooseday"):]
-    city = ID_TO_CITY.get(cid, cid)
+    country, city = resolve_location_id(cid)
     await send_or_edit(
         callback,
-        f"📆 <b>{escape_html(city)}</b>\n\nВыберите день:",
+        f"📆 <b>{escape_html(get_country_city_label(country, city))}</b>\n\nВыберите день:",
         parse_mode=HTML_MODE,
         reply_markup=get_days_keyboard(f"liveday{cid}_", f"liveperiod{cid}", "← К городу"),
     )
@@ -1500,11 +1594,11 @@ async def live_choose_day(callback: CallbackQuery):
 async def live_show_day(callback: CallbackQuery):
     payload = callback.data[len("liveday"):]
     cid, day_index_str = payload.rsplit("_", 1)
-    city = ID_TO_CITY.get(cid, cid)
+    country, city = resolve_location_id(cid)
     day_index = int(day_index_str)
     user_data = get_user_sub(str(callback.from_user.id))
-    groups = get_live_groups_for_day(city, day_index)
-    text = f"🏙 <b>{escape_html(city)}</b>\n\n{format_day_header(DAYS[day_index])}\n\n"
+    groups = get_live_groups_for_day(city, day_index, country)
+    text = f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>\n\n{format_day_header(DAYS[day_index])}\n\n"
     text += "\n".join(format_live_group_with_sub(n, a, s, e, w, user_data) for n, a, s, e, w in groups) if groups else "Нет групп."
     await send_or_edit(callback, text, parse_mode=HTML_MODE, reply_markup=back_markup("← К дням", f"livechooseday{cid}"))
 
