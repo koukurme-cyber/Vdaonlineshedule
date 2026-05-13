@@ -738,17 +738,35 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
 
 CONTACTS_TEXT = (
     'По вопросам актуализации информации о группах пишите '
-    '<a href="https://t.me/koukurme2022">сюда</a> '
-    'либо на <a href="https://adultchildren.ru/contacts/">официальный сайт РКО ВДА</a>.'
+    '<a href="https://t.me/kokurme2022">сюда</a> '
+    'либо на <a href="https://adultchildren.ru/">официальный сайт РКО ВДА</a>.'
+)
+
+
+HELP_TEXT = (
+    '<b>Помощь</b>\n\n'
+    '<b>Главные разделы</b>\n'
+    '🌐 Онлайн-встречи — расписание онлайн-групп по дням.\n'
+    '🏙 Живые встречи — очные группы по стране, городу и дню недели.\n'
+    '🔔 Мои подписки — выбранные группы, утреннее расписание и напоминания.\n'
+    'Ещё — фраза поддержки, контакты и справка.\n\n'
+    '<b>Команды</b>\n'
+    '/start — открыть главное меню.\n'
+    '/help — показать эту справку.\n'
+    '/slogan — получить случайную фразу поддержки.\n\n'
+    '<b>Подписки</b>\n'
+    'Можно подписаться на все онлайн-группы, все живые группы выбранного города или отдельные группы. '
+    'Напоминания настраиваются отдельно для онлайн- и живых встреч.'
 )
 
 
 def build_more_menu_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="💫 Установки", callback_data="mainslogan"),
+        InlineKeyboardButton(text="💫 Фраза поддержки", callback_data="mainslogan"),
         InlineKeyboardButton(text="Контакты", callback_data="maincontacts"),
     )
+    builder.row(InlineKeyboardButton(text="Помощь", callback_data="mainhelp"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
@@ -1287,7 +1305,7 @@ async def cmd_start(message: Message):
 @DP.message(Command("help"))
 async def cmd_help(message: Message):
     await message.answer(
-        "<b>Команды</b>\n\n/start — главное меню\n/help — помощь\n/slogan — случайная фраза поддержки\n\nГлавные разделы: онлайн-встречи, живые встречи, мои подписки, ещё.",
+        HELP_TEXT,
         parse_mode=HTML_MODE,
         reply_markup=back_markup("⬅️ Главное меню", "mainmenu"),
     )
@@ -1296,7 +1314,7 @@ async def cmd_help(message: Message):
 @DP.message(Command("slogan"))
 async def cmd_slogan(message: Message):
     await message.answer(
-        f"<b>Установка</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
+        f"<b>Фраза поддержки</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
         parse_mode=HTML_MODE,
         reply_markup=back_markup("⬅️ Главное меню", "mainmenu"),
     )
@@ -1346,6 +1364,16 @@ async def main_more_callback(callback: CallbackQuery):
     await send_or_edit(callback, "<b>Ещё</b>", parse_mode=HTML_MODE, reply_markup=build_more_menu_keyboard())
 
 
+@DP.callback_query(F.data == "mainhelp")
+async def main_help_callback(callback: CallbackQuery):
+    await send_or_edit(
+        callback,
+        HELP_TEXT,
+        parse_mode=HTML_MODE,
+        reply_markup=back_markup("← Ещё", "mainmore"),
+    )
+
+
 @DP.callback_query(F.data == "maincontacts")
 async def main_contacts_callback(callback: CallbackQuery):
     await send_or_edit(
@@ -1361,7 +1389,7 @@ async def main_contacts_callback(callback: CallbackQuery):
 async def main_slogan_callback(callback: CallbackQuery):
     await send_or_edit(
         callback,
-        f"<b>Установки</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
+        f"<b>Фраза поддержки</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
         parse_mode=HTML_MODE,
         reply_markup=back_markup("← Ещё", "mainmore"),
     )
@@ -1737,10 +1765,19 @@ async def btn_more(message: Message):
     await message.answer("<b>Ещё</b>", parse_mode=HTML_MODE, reply_markup=build_more_menu_keyboard())
 
 
-@DP.message(F.text == "💫 Установки")
+@DP.message(F.text == "Помощь")
+async def btn_help(message: Message):
+    await message.answer(
+        HELP_TEXT,
+        parse_mode=HTML_MODE,
+        reply_markup=back_markup("← Ещё", "mainmore"),
+    )
+
+
+@DP.message(F.text == "💫 Фраза поддержки")
 async def btn_slogan(message: Message):
     await message.answer(
-        f"<b>Установка</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
+        f"<b>Фраза поддержки</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
         parse_mode=HTML_MODE,
         reply_markup=back_markup("← Ещё", "mainmore"),
     )
