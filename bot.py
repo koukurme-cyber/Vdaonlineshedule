@@ -746,7 +746,7 @@ CONTACTS_TEXT = (
 def build_more_menu_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="💫 Установка", callback_data="mainslogan"),
+        InlineKeyboardButton(text="💫 Установки", callback_data="mainslogan"),
         InlineKeyboardButton(text="Контакты", callback_data="maincontacts"),
     )
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
@@ -1296,7 +1296,7 @@ async def cmd_help(message: Message):
 @DP.message(Command("slogan"))
 async def cmd_slogan(message: Message):
     await message.answer(
-        f"<b>Установка</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
+        f"<b>Установки</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
         parse_mode=HTML_MODE,
         reply_markup=back_markup("⬅️ Главное меню", "mainmenu"),
     )
@@ -1361,7 +1361,7 @@ async def main_contacts_callback(callback: CallbackQuery):
 async def main_slogan_callback(callback: CallbackQuery):
     await send_or_edit(
         callback,
-        f"<b>Установка</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
+        f"<b>Установки</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
         parse_mode=HTML_MODE,
         reply_markup=back_markup("← Ещё", "mainmore"),
     )
@@ -1737,7 +1737,7 @@ async def btn_more(message: Message):
     await message.answer("<b>Ещё</b>", parse_mode=HTML_MODE, reply_markup=build_more_menu_keyboard())
 
 
-@DP.message(F.text == "💫 Установка")
+@DP.message(F.text == "💫 Установки")
 async def btn_slogan(message: Message):
     await message.answer(
         f"<b>Установка</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
