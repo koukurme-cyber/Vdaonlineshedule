@@ -231,7 +231,7 @@ REPLY_MAIN_MENU = ReplyKeyboardMarkup(
         ],
         [
             KeyboardButton(text="🔔 Мои подписки"),
-            KeyboardButton(text="💫 Установка"),
+            KeyboardButton(text="Ещё"),
         ],
     ],
     resize_keyboard=True,
@@ -729,8 +729,27 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(text="🔔 Мои подписки", callback_data="mainsub"),
-        InlineKeyboardButton(text="💫 Установка", callback_data="mainslogan"),
+        InlineKeyboardButton(text="Ещё", callback_data="mainmore"),
     )
+    return builder.as_markup()
+
+
+
+
+CONTACTS_TEXT = (
+    'По вопросам актуализации информации о группах пишите '
+    '<a href="https://t.me/kokurme2022">сюда</a> '
+    'либо на <a href="https://adultchildren.ru/">официальный сайт РКО ВДА</a>.'
+)
+
+
+def build_more_menu_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="💫 Установка", callback_data="mainslogan"),
+        InlineKeyboardButton(text="Контакты", callback_data="maincontacts"),
+    )
+    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
 
@@ -1268,7 +1287,7 @@ async def cmd_start(message: Message):
 @DP.message(Command("help"))
 async def cmd_help(message: Message):
     await message.answer(
-        "<b>Команды</b>\n\n/start — главное меню\n/help — помощь\n/slogan — случайная фраза поддержки\n\nГлавные разделы: онлайн-встречи, живые встречи, мои подписки, установка.",
+        "<b>Команды</b>\n\n/start — главное меню\n/help — помощь\n/slogan — случайная фраза поддержки\n\nГлавные разделы: онлайн-встречи, живые встречи, мои подписки, ещё.",
         parse_mode=HTML_MODE,
         reply_markup=back_markup("⬅️ Главное меню", "mainmenu"),
     )
@@ -1322,13 +1341,29 @@ async def live_my_city_callback(callback: CallbackQuery):
     await send_or_edit(callback, f"🏙 <b>{escape_html(get_country_city_label(user_data.get('country'), city))}</b>", parse_mode=HTML_MODE, reply_markup=live_period_keyboard(city, user_data.get("country")))
 
 
+@DP.callback_query(F.data == "mainmore")
+async def main_more_callback(callback: CallbackQuery):
+    await send_or_edit(callback, "<b>Ещё</b>", parse_mode=HTML_MODE, reply_markup=build_more_menu_keyboard())
+
+
+@DP.callback_query(F.data == "maincontacts")
+async def main_contacts_callback(callback: CallbackQuery):
+    await send_or_edit(
+        callback,
+        CONTACTS_TEXT,
+        parse_mode=HTML_MODE,
+        disable_web_page_preview=True,
+        reply_markup=back_markup("← Ещё", "mainmore"),
+    )
+
+
 @DP.callback_query(F.data == "mainslogan")
 async def main_slogan_callback(callback: CallbackQuery):
     await send_or_edit(
         callback,
         f"<b>Установка</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
         parse_mode=HTML_MODE,
-        reply_markup=back_markup("⬅️ Главное меню", "mainmenu"),
+        reply_markup=back_markup("← Ещё", "mainmore"),
     )
 
 
@@ -1697,12 +1732,27 @@ async def btn_settings(message: Message):
     await message.answer("⚙️ <b>Настройки уведомлений</b>", parse_mode=HTML_MODE, reply_markup=build_settings_root_menu())
 
 
+@DP.message(F.text == "Ещё")
+async def btn_more(message: Message):
+    await message.answer("<b>Ещё</b>", parse_mode=HTML_MODE, reply_markup=build_more_menu_keyboard())
+
+
 @DP.message(F.text == "💫 Установка")
 async def btn_slogan(message: Message):
     await message.answer(
         f"<b>Установка</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
         parse_mode=HTML_MODE,
-        reply_markup=back_markup("⬅️ Главное меню", "mainmenu"),
+        reply_markup=back_markup("← Ещё", "mainmore"),
+    )
+
+
+@DP.message(F.text == "Контакты")
+async def btn_contacts(message: Message):
+    await message.answer(
+        CONTACTS_TEXT,
+        parse_mode=HTML_MODE,
+        disable_web_page_preview=True,
+        reply_markup=back_markup("← Ещё", "mainmore"),
     )
 
 
