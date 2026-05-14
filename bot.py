@@ -1,8 +1,9 @@
 import asyncio
+import csv
 import hashlib
+import io
 import json
 import os
-
 import random
 import re
 from datetime import datetime, timedelta
@@ -383,6 +384,33 @@ def read_live_source() -> str:
     return ""
 
 
+def clean_live_cell(value: str, schedule: bool = False) -> str:
+    value = "" if value is None else str(value)
+    value = value.replace("\ufeff", "")
+    value = re.sub(
+        r"(?i)([А-ЯЁA-Z])\s*(?:<br\s*/?>|\r\n|\n|\r)\s*([а-яёa-z])",
+        r"\1\2",
+        value,
+    )
+    separator = "; " if schedule else " "
+    value = re.sub(r"(?i)<br\s*/?>", separator, value)
+    value = value.replace("\r\n", separator).replace("\n", separator).replace("\r", separator).replace("\t", " ")
+    value = re.sub(r"\s+", " ", value)
+    value = re.sub(r"\s+([,.;:])", r"\1", value)
+    value = re.sub(r"([,;])(?=\S)", r"\1 ", value)
+    return value.strip(" \t\n\r\"'")
+
+
+def normalize_live_time_token(value: str) -> str:
+    value = value.strip().lower().replace("ч", "").replace(":", ".").replace("-", ".")
+    if re.fullmatch(r"\d{1,2}", value):
+        value = f"{int(value):02d}.00"
+    match = re.fullmatch(r"(\d{1,2})\.(\d{1,2})", value)
+    if match:
+        return f"{int(match.group(1)):02d}:{int(match.group(2)):02d}"
+    return value.replace(".", ":")
+
+
 def parse_live_schedule(raw_lines: str) -> List[dict]:
     groups = []
     short_map = {
@@ -390,24 +418,33 @@ def parse_live_schedule(raw_lines: str) -> List[dict]:
         "чт": 3, "чет": 3, "пт": 4, "пят": 4, "сб": 5, "суб": 5,
         "вс": 6, "вос": 6,
     }
-    for line in raw_lines.strip().splitlines():
-        if not line.strip():
-            continue
-        parts = [c.strip() for c in line.split("\t")]
+    reader = csv.reader(io.StringIO(raw_lines), delimiter="\t")
+    for parts in reader:
+        parts = [clean_live_cell(c) for c in parts]
         if len(parts) < 5:
             continue
         country, city, name, address, time_str = parts[:5]
-        entry_parts = re.split(r";|\\n|\n| и ", time_str.replace('"', ''))
+        if not country or country.lower() == "страна":
+            continue
+        time_str = clean_live_cell(time_str, schedule=True).replace('"', '')
+        entry_parts = re.split(r";|\\n|\n|(?<=\d)\s+(?=(?:Понедельник|Вторник|Среда|Четверг|Пятница|Суббота|Воскресенье)\b)| и (?=[А-ЯЁа-яё]+\s+(?:с|в|\d))", time_str)
         days = []
         for entry in entry_parts:
             entry = entry.strip()
             if not entry:
                 continue
-            lower = entry.lower()
-            day_found = next((i for i, day_name in enumerate(DAYS) if day_name.lower() in lower or day_name[:3].lower() in lower), None)
+            lower = entry.lower().replace("ё", "е")
+            day_found = next(
+                (
+                    i for i, day_name in enumerate(DAYS)
+                    if day_name.lower().replace("ё", "е") in lower
+                    or day_name[:3].lower().replace("ё", "е") in lower
+                ),
+                None,
+            )
             if day_found is None:
                 for key, idx in short_map.items():
-                    if key in lower:
+                    if re.search(rf"(?<![а-яё]){re.escape(key)}(?![а-яё])", lower):
                         day_found = idx
                         break
             if day_found is None:
@@ -424,20 +461,24 @@ def parse_live_schedule(raw_lines: str) -> List[dict]:
             elif "четверт" in lower and "четверг" not in lower:
                 occurrence = 4
             is_work_meeting = "рабоч" in lower or "рабочка" in lower
-            times = re.findall(r"(\d{1,2}[.:]\d{2})\s*[-–]\s*(\d{1,2}[.:]\d{2})", entry)
+            time_pattern = r"(\d{1,2}(?:[.:\-]\d{2})?)"
+            times = []
+            for match in re.finditer(rf"{time_pattern}\s*(?:[-–—]|до)\s*{time_pattern}", entry, flags=re.I):
+                times.append((match.group(1), match.group(2)))
             if not times:
-                times = re.findall(r"с\s*(\d{1,2}[.:-]\d{2})\s*до\s*(\d{1,2}[.:-]\d{2})", entry)
+                for match in re.finditer(rf"с\s*{time_pattern}\s*до\s*{time_pattern}", entry, flags=re.I):
+                    times.append((match.group(1), match.group(2)))
             if not times:
-                single = re.findall(r"в\s*(\d{1,2}[.:]\d{2})", entry) or re.findall(r"(?<!\d)(\d{1,2}[.:]\d{2})(?!\d)", entry)
+                single = re.findall(rf"(?:в\s*)?{time_pattern}", entry, flags=re.I)
                 if single:
-                    start = single[0].replace('.', ':').replace('-', ':')
-                    h, m = start.split(':')
+                    start = normalize_live_time_token(single[0])
+                    h, m = start.split(":")
                     times = [(start, f"{(int(h) + 1):02d}:{m}")]
             for start, end in times:
                 days.append({
                     "day": day_found,
-                    "start": start.replace('.', ':').replace('-', ':'),
-                    "end": end.replace('.', ':').replace('-', ':'),
+                    "start": normalize_live_time_token(start),
+                    "end": normalize_live_time_token(end),
                     "occurrence": occurrence,
                     "is_work_meeting": is_work_meeting,
                 })
@@ -450,7 +491,6 @@ def parse_live_schedule(raw_lines: str) -> List[dict]:
                 "days": days,
             })
     return groups
-
 
 RAW_LIVE = read_live_source()
 LIVE_GROUPS = parse_live_schedule(RAW_LIVE) if RAW_LIVE else []
