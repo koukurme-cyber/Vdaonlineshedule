@@ -229,8 +229,21 @@ def add_online_group(day_indices: Iterable[int], time_str: str, name: str, url: 
 # Дополнительные онлайн-группы, добавленные вручную.
 # ONLINE_SCHEDULE хранит только время начала, поэтому окончание собрания здесь не указывается.
 add_online_group([3], "20:15", "ВДА онлайн Минск", "https://t.me/+iIAYtReKyd04YTdi")
-for _time in ["09:00", "10:00", "11:00", "13:00", "14:00", "15:00", "19:00", "20:00", "21:00"]:
-    add_online_group(range(7), _time, "БШН", "https://t.me/bshnvda")
+
+# БШН: программная группа, основанная на традициях ВДА.
+# Воскресное собрание 21:30 — ПЛР; в расписании оставляем общую группу «БШН»,
+# чтобы не дробить подписку на отдельное название.
+add_online_group([0], "18:00", "БШН", "https://t.me/bshnvda")
+add_online_group([1], "18:00", "БШН", "https://t.me/bshnvda")
+add_online_group([2], "09:00", "БШН", "https://t.me/bshnvda")
+add_online_group([3], "12:00", "БШН", "https://t.me/bshnvda")
+add_online_group([4], "10:00", "БШН", "https://t.me/bshnvda")
+add_online_group([5], "07:00", "БШН", "https://t.me/bshnvda")
+add_online_group([6], "21:30", "БШН", "https://t.me/bshnvda")
+
+# Свобода теперь проводится ежедневно в 09:00 и 21:00.
+add_online_group(range(7), "09:00", "Свобода", "https://t.me/vda_svoboda")
+
 add_online_group([2, 4, 5], "13:00", "Начало", "https://max.ru/join/K1vR_TmHfgSBKnKR9DT04dX1vO81a3GuyBP3kc0fsio")
 
 
@@ -254,9 +267,10 @@ REPLY_MAIN_MENU = ReplyKeyboardMarkup(
         ],
         [
             KeyboardButton(text="🔔 Мои подписки"),
-            KeyboardButton(text="🔍 Найти группу"),
+            KeyboardButton(text="Настройки уведомлений"),
         ],
         [
+            KeyboardButton(text="🔍 Найти группу"),
             KeyboardButton(text="Контакты"),
         ],
     ],
@@ -864,9 +878,12 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(text="🔔 Мои подписки", callback_data="mainsub"),
-        InlineKeyboardButton(text="🔍 Найти группу", callback_data="searchgroup"),
+        InlineKeyboardButton(text="Настройки уведомлений", callback_data="settingsroot"),
     )
-    builder.row(InlineKeyboardButton(text="Контакты", callback_data="maincontacts"))
+    builder.row(
+        InlineKeyboardButton(text="🔍 Найти группу", callback_data="searchgroup"),
+        InlineKeyboardButton(text="Контакты", callback_data="maincontacts"),
+    )
     return builder.as_markup()
 
 
@@ -2051,6 +2068,12 @@ async def btn_slogan(message: Message):
         parse_mode=HTML_MODE,
         reply_markup=back_markup("← Ещё", "mainmore"),
     )
+
+
+@DP.message(F.text == "Настройки уведомлений")
+async def btn_notification_settings(message: Message):
+    user_data = get_user_sub(str(message.from_user.id))
+    await message.answer(render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu())
 
 
 @DP.message(F.text == "Контакты")
