@@ -1432,27 +1432,34 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
     prefix = "online" if group_type == "online" else "live"
     daily_enabled = settings.get("daily_enabled", True)
     builder = InlineKeyboardBuilder()
+
     builder.row(InlineKeyboardButton(
-        text="✅ Утренняя сводка включена" if daily_enabled else "Утренняя сводка выключена",
+        text="Отключить утреннюю сводку" if daily_enabled else "Включить утреннюю сводку",
         callback_data=f"toggledaily:{prefix}",
     ))
-    for hour in DAY_HOUR_CHOICES:
-        checked = "✅ " if daily_enabled and settings["daily_hour"] == hour else ""
-        builder.button(text=f"{checked}{hour:02d}:00", callback_data=f"setdailyhour:{prefix}:{hour}")
-    builder.adjust(1, len(DAY_HOUR_CHOICES))
+
+    if daily_enabled:
+        for hour in DAY_HOUR_CHOICES:
+            checked = "✅ " if settings["daily_hour"] == hour else ""
+            builder.button(text=f"{checked}{hour:02d}:00", callback_data=f"setdailyhour:{prefix}:{hour}")
+        builder.adjust(1, len(DAY_HOUR_CHOICES))
+
     remind_set = set(settings["remind_before"])
     builder.row(
         InlineKeyboardButton(text="✅ За 1 час" if remind_set == {60} else "За 1 час", callback_data=f"setremind:{prefix}:1"),
         InlineKeyboardButton(text="✅ За 2 часа" if remind_set == {120} else "За 2 часа", callback_data=f"setremind:{prefix}:2"),
-        InlineKeyboardButton(text="✅ Оба" if remind_set == {60, 120} else "Оба", callback_data=f"setremind:{prefix}:both"),
+        InlineKeyboardButton(text="✅ За 1 и 2 часа" if remind_set == {60, 120} else "За 1 и 2 часа", callback_data=f"setremind:{prefix}:both"),
     )
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
-    daily_text = f"включена, {settings['daily_hour']:02d}:00" if daily_enabled else "выключена"
+
+    daily_text = f"включена, {settings['daily_hour']:02d}" if daily_enabled else "выключена"
     text = (
         f"<b>{title}</b>\n\n"
-        f"🕖 Утренняя сводка: <b>{daily_text}</b>\n"
-        f"⏰ Напоминания: <b>{format_remind_label(settings['remind_before'])}</b>"
+        f"🕖 <b>Утренняя сводка</b>\n"
+        f"Состояние: <b>{daily_text}</b>\n\n"
+        f"⏰ <b>Напоминания о встречах</b>\n"
+        f"Когда напоминать: <b>{format_remind_label(settings['remind_before'])}</b>"
     )
     await send_or_edit(target, text, parse_mode=HTML_MODE, reply_markup=builder.as_markup())
 
