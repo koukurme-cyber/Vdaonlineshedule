@@ -1031,14 +1031,24 @@ def get_days_keyboard(prefix: str, back_callback: str, back_text: str = "← Н�
 
 def build_subscriptions_menu() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="⭐ Список моих групп", callback_data="mainmygroups"))
-    builder.row(InlineKeyboardButton(text="⚙️ Настройки уведомлений", callback_data="settingsroot"))
-    builder.row(
-        InlineKeyboardButton(text="🌐 Онлайн-подписки", callback_data="subonline"),
-        InlineKeyboardButton(text="🏙 Живые подписки", callback_data="sublive"),
-    )
+    builder.row(InlineKeyboardButton(text="Мои подписки", callback_data="mainmygroups"))
+    builder.row(InlineKeyboardButton(text="Выбрать онлайн-группы", callback_data="subonline"))
+    builder.row(InlineKeyboardButton(text="Выбрать живые группы", callback_data="sublive"))
+    builder.row(InlineKeyboardButton(text="Настройки уведомлений", callback_data="settingsroot"))
     builder.row(InlineKeyboardButton(text="🔕 Отписаться от всего", callback_data="mainunsubscribe"))
-    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
+    builder.row(InlineKeyboardButton(text="← Главное меню", callback_data="mainmenu"))
+    return builder.as_markup()
+
+
+def build_my_groups_menu() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="Изменить онлайн", callback_data="subonline"),
+        InlineKeyboardButton(text="Изменить живые", callback_data="sublive"),
+    )
+    builder.row(InlineKeyboardButton(text="Настроить уведомления", callback_data="settingsroot"))
+    builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
+    builder.row(InlineKeyboardButton(text="← Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
 
@@ -1062,22 +1072,58 @@ def format_remind_label(remind_before: Iterable[int]) -> str:
     return "за 1 час"
 
 
+def format_settings_line(label: str, settings: dict) -> str:
+    daily_enabled = settings.get("daily_enabled", True)
+    if daily_enabled:
+        daily_text = f"сводка в {int(settings.get('daily_hour', DEFAULT_DAILY_HOUR)):02d}:00"
+    else:
+        daily_text = "сводка выключена"
+    return f"{label} — {daily_text}, напоминания {format_remind_label(settings.get('remind_before', DEFAULT_REMIND_BEFORE))}"
+
+
 def render_my_groups_text(user_data: dict) -> str:
-    lines = ["<b>Мои группы</b>"]
+    lines = ["🔔 <b>Мои подписки</b>"]
+
+    online_items = []
+    live_items = []
     if user_data.get("all_online"):
-        lines.append("\n🌐 Все онлайн")
+        online_items.append("Все онлайн-группы")
     if user_data.get("all_live"):
-        city_text = f" ({escape_html(user_data['city'])})" if user_data.get("city") else ""
-        lines.append(f"\n🏙 Все живые{city_text}")
-    groups = user_data.get("groups", {})
-    if groups:
-        lines.append("")
-        for name, payload in sorted(groups.items(), key=lambda x: x[0].lower()):
-            emoji = "🌐" if payload.get("type") == "online" else "🏙"
-            lines.append(f"{emoji} {escape_html(name)}")
-    if len(lines) == 1:
-        lines.append("\nПодписок пока нет.")
+        city = user_data.get("city")
+        country = user_data.get("country")
+        city_text = get_country_city_label(country, city) if city else "выбранного города"
+        live_items.append(f"Все живые группы: {escape_html(city_text)}")
+
+    for name, payload in sorted(user_data.get("groups", {}).items(), key=lambda x: x[0].lower()):
+        if payload.get("type") == "online":
+            online_items.append(escape_html(name))
+        elif payload.get("type") == "live":
+            live_items.append(escape_html(name))
+
+    lines.append("\n🌐 <b>Онлайн</b>")
+    if online_items:
+        lines.extend(f"• {item}" for item in online_items)
+    else:
+        lines.append("Нет выбранных онлайн-групп.")
+
+    lines.append("\n🏙 <b>Живые</b>")
+    if live_items:
+        lines.extend(f"• {item}" for item in live_items)
+    else:
+        lines.append("Нет выбранных живых групп.")
+
+    lines.append("\n⚙️ <b>Уведомления</b>")
+    lines.append(format_settings_line("🌐 Онлайн", get_online_settings(user_data)))
+    lines.append(format_settings_line("🏙 Живые", get_live_settings(user_data)))
     return "\n".join(lines)
+
+
+def render_settings_root_text(user_data: dict) -> str:
+    return (
+        "⚙️ <b>Настройки уведомлений</b>\n\n"
+        f"{format_settings_line('🌐 Онлайн', get_online_settings(user_data))}\n"
+        f"{format_settings_line('🏙 Живые', get_live_settings(user_data))}"
+    )
 
 
 async def safe_callback_answer(callback: CallbackQuery, text: str = ""):
@@ -1363,7 +1409,11 @@ async def notifications_worker(bot: Bot):
 
 
 async def show_sub_main(target: CallbackQuery | Message):
-    await send_or_edit(target, "🔔 <b>Подписки</b>", parse_mode=HTML_MODE, reply_markup=build_subscriptions_menu())
+    text = (
+        "🔔 <b>Подписки</b>\n\n"
+        "Здесь можно выбрать группы и настроить уведомления."
+    )
+    await send_or_edit(target, text, parse_mode=HTML_MODE, reply_markup=build_subscriptions_menu())
 
 
 async def show_sub_online_list(target: CallbackQuery | Message):
@@ -1374,10 +1424,14 @@ async def show_sub_online_list(target: CallbackQuery | Message):
     for gid, name in sorted(ONLINE_GROUP_ID_TO_NAME.items(), key=lambda x: x[1].lower()):
         prefix = "🔔" if is_user_subscribed_to_online(user_data, name) else "🔕"
         builder.row(InlineKeyboardButton(text=f"{prefix} {name}", callback_data=f"subtoggleonline{gid}"))
-    builder.row(InlineKeyboardButton(text="⚙️ Настройки онлайн", callback_data="subsettingsonline"))
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
-    await send_or_edit(target, "🌐 Онлайн-подписки\n\n🔔 — включено\n🔕 — выключено", parse_mode=HTML_MODE, reply_markup=builder.as_markup())
+    await send_or_edit(
+        target,
+        "🌐 <b>Онлайн-группы</b>\n\nНажмите на группу, чтобы включить или выключить уведомления.\n🔔 — включено\n🔕 — выключено",
+        parse_mode=HTML_MODE,
+        reply_markup=builder.as_markup(),
+    )
 
 
 async def show_sub_live_country_selector(target: CallbackQuery | Message):
@@ -1419,10 +1473,14 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str, country
         prefix = "🔔" if is_user_subscribed_to_live(user_data, name) else "🔕"
         builder.row(InlineKeyboardButton(text=f"{prefix} {name}", callback_data=f"subtogglelive{gid}"))
     builder.row(InlineKeyboardButton(text="🏙 Сменить город", callback_data="sublivecitychange"))
-    builder.row(InlineKeyboardButton(text="⚙️ Настройки живых", callback_data="subsettingslive"))
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
-    await send_or_edit(target, f"🏙 Живые подписки: <b>{escape_html(city)}</b>\n\n🔔 — включено\n🔕 — выключено", parse_mode=HTML_MODE, reply_markup=builder.as_markup())
+    await send_or_edit(
+        target,
+        f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>\n\nНажмите на группу, чтобы включить или выключить уведомления.\n🔔 — включено\n🔕 — выключено",
+        parse_mode=HTML_MODE,
+        reply_markup=builder.as_markup(),
+    )
 
 
 async def settings_menu(target: CallbackQuery | Message, group_type: str):
@@ -1451,7 +1509,7 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
         InlineKeyboardButton(text="✅ За 2 часа" if remind_set == {120} else "За 2 часа", callback_data=f"setremind:{prefix}:2"),
         InlineKeyboardButton(text="✅ За 1 и 2 часа" if remind_set == {60, 120} else "За 1 и 2 часа", callback_data=f"setremind:{prefix}:both"),
     )
-    builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
+    builder.row(InlineKeyboardButton(text="← К настройкам", callback_data="settingsroot"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
 
     daily_text = f"включена, {settings['daily_hour']:02d}" if daily_enabled else "выключена"
@@ -1599,13 +1657,14 @@ async def main_sub_callback(callback: CallbackQuery):
 
 @DP.callback_query(F.data == "mainsettings")
 async def main_settings_callback(callback: CallbackQuery):
-    await send_or_edit(callback, "⚙️ <b>Настройки уведомлений</b>", parse_mode=HTML_MODE, reply_markup=build_settings_root_menu())
+    user_data = get_user_sub(str(callback.from_user.id))
+    await send_or_edit(callback, render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu())
 
 
 @DP.callback_query(F.data == "mainmygroups")
 async def main_my_groups_callback(callback: CallbackQuery):
     user_data = get_user_sub(str(callback.from_user.id))
-    await send_or_edit(callback, render_my_groups_text(user_data), parse_mode=HTML_MODE, reply_markup=build_subscriptions_menu())
+    await send_or_edit(callback, render_my_groups_text(user_data), parse_mode=HTML_MODE, reply_markup=build_my_groups_menu())
 
 
 @DP.callback_query(F.data == "mainunsubscribe")
@@ -1760,7 +1819,8 @@ async def sub_toggle_live(callback: CallbackQuery):
 
 @DP.callback_query(F.data == "settingsroot")
 async def settings_root_callback(callback: CallbackQuery):
-    await send_or_edit(callback, "⚙️ <b>Настройки уведомлений</b>", parse_mode=HTML_MODE, reply_markup=build_settings_root_menu())
+    user_data = get_user_sub(str(callback.from_user.id))
+    await send_or_edit(callback, render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu())
 
 
 @DP.callback_query(F.data == "subsettingsonline")
@@ -1960,13 +2020,14 @@ async def btn_my_groups(message: Message):
     await message.answer(
         render_my_groups_text(get_user_sub(str(message.from_user.id))),
         parse_mode=HTML_MODE,
-        reply_markup=build_subscriptions_menu(),
+        reply_markup=build_my_groups_menu(),
     )
 
 
 @DP.message(F.text == "⚙️ Настройки")
 async def btn_settings(message: Message):
-    await message.answer("⚙️ <b>Настройки уведомлений</b>", parse_mode=HTML_MODE, reply_markup=build_settings_root_menu())
+    user_data = get_user_sub(str(message.from_user.id))
+    await message.answer(render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu())
 
 
 @DP.message(F.text == "Ещё")
