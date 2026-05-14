@@ -217,12 +217,31 @@ ONLINE_SCHEDULE = {
 }
 
 
+def add_online_group(day_indices: Iterable[int], time_str: str, name: str, url: str):
+    for day_index in day_indices:
+        day_groups = ONLINE_SCHEDULE.setdefault(day_index, [])
+        if not any(t == time_str and n == name for t, n, _ in day_groups):
+            day_groups.append((time_str, name, url))
+
+
+# Дополнительные онлайн-группы, добавленные вручную.
+# ONLINE_SCHEDULE хранит только время начала, поэтому окончание собрания здесь не указывается.
+add_online_group([3], "20:15", "ВДА онлайн Минск", "https://t.me/+iIAYtReKyd04YTdi")
+for _time in ["09:00", "10:00", "11:00", "13:00", "14:00", "15:00", "19:00", "20:00", "21:00"]:
+    add_online_group(range(7), _time, "БШН", "https://t.me/bshnvda")
+add_online_group([2, 4, 5], "13:00", "Начало", "https://max.ru/join/K1vR_TmHfgSBKnKR9DT04dX1vO81a3GuyBP3kc0fsio")
+
+
 class LiveGroupSearch(StatesGroup):
     waiting_for_city = State()
 
 
 class SubCitySearch(StatesGroup):
     waiting_for_city = State()
+
+
+class GroupNameSearch(StatesGroup):
+    waiting_for_name = State()
 
 
 REPLY_MAIN_MENU = ReplyKeyboardMarkup(
@@ -234,6 +253,9 @@ REPLY_MAIN_MENU = ReplyKeyboardMarkup(
         [
             KeyboardButton(text="🔔 Мои подписки"),
             KeyboardButton(text="Ещё"),
+        ],
+        [
+            KeyboardButton(text="🔍 Найти группу"),
         ],
     ],
     resize_keyboard=True,
@@ -702,6 +724,74 @@ def get_online_full() -> str:
     return "\n\n".join(parts) if parts else "Онлайн-групп нет."
 
 
+
+def normalize_search_query(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").strip().lower())
+
+
+def collect_online_group_matches(query: str) -> List[Tuple[str, List[Tuple[int, str, str]]]]:
+    q = normalize_search_query(query)
+    found: Dict[str, List[Tuple[int, str, str]]] = {}
+    for day_index, day_groups in ONLINE_SCHEDULE.items():
+        for time_str, name, url in day_groups:
+            if q in normalize_search_query(name):
+                found.setdefault(name, []).append((day_index, time_str, url))
+    return sorted(found.items(), key=lambda x: x[0].lower())
+
+
+def collect_live_group_matches(query: str) -> List[dict]:
+    q = normalize_search_query(query)
+    result = []
+    seen = set()
+    for group in LIVE_GROUPS:
+        if q not in normalize_search_query(group.get("name", "")):
+            continue
+        key = (group.get("country"), group.get("city"), group.get("name"), group.get("address"))
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(group)
+    return sorted(result, key=lambda g: (g.get("country") != "Россия", g.get("country", "").lower(), city_sort_key(g.get("city", "")), g.get("name", "").lower()))
+
+
+def format_search_results(query: str) -> str:
+    online_matches = collect_online_group_matches(query)
+    live_matches = collect_live_group_matches(query)
+    if not online_matches and not live_matches:
+        return f"По запросу «{escape_html(query)}» группы не найдены."
+
+    lines = [f"🔍 <b>Поиск группы:</b> {escape_html(query)}"]
+
+    if online_matches:
+        lines.append("\n🌐 <b>Онлайн</b>")
+        for name, occurrences in online_matches[:20]:
+            parts = []
+            for day_index, time_str, url in sorted(occurrences, key=lambda x: (x[0], x[1]))[:10]:
+                parts.append(f"{DAYS[day_index][:2]} {time_str}")
+            url = occurrences[0][2]
+            extra = "…" if len(occurrences) > 10 else ""
+            lines.append(f'• <a href="{url}">{escape_html(name)}</a> — {escape_html(", ".join(parts) + extra)}')
+        if len(online_matches) > 20:
+            lines.append(f"…и ещё {len(online_matches) - 20} онлайн-групп.")
+
+    if live_matches:
+        lines.append("\n🏙 <b>Живые</b>")
+        for group in live_matches[:20]:
+            day_parts = []
+            for entry in sorted(group.get("days", []), key=lambda e: (e.get("day", 0), e.get("start", "")))[:7]:
+                day_parts.append(f"{DAYS[entry['day']][:2]} {entry['start']}")
+            days_text = ", ".join(day_parts) if day_parts else "расписание не распознано"
+            lines.append(
+                f"• <b>{escape_html(group['name'])}</b> — "
+                f"{escape_html(get_country_city_label(group.get('country'), group.get('city', '')))}; "
+                f"{escape_html(group.get('address', ''))}; {escape_html(days_text)}"
+            )
+        if len(live_matches) > 20:
+            lines.append(f"…и ещё {len(live_matches) - 20} живых групп. Уточните запрос.")
+
+    return "\n".join(lines)
+
+
 def get_user_sub(uid: str) -> dict:
     return STORE.get_user(uid)
 
@@ -772,6 +862,7 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🔔 Мои подписки", callback_data="mainsub"),
         InlineKeyboardButton(text="Ещё", callback_data="mainmore"),
     )
+    builder.row(InlineKeyboardButton(text="🔍 Найти группу", callback_data="searchgroup"))
     return builder.as_markup()
 
 
@@ -822,6 +913,7 @@ def build_live_root_keyboard(user_data: Optional[dict] = None) -> InlineKeyboard
         ))
     builder.row(InlineKeyboardButton(text="🌍 Выбрать страну", callback_data="livechoosecountry"))
     builder.row(InlineKeyboardButton(text="🔍 Найти город", callback_data="livesearchcity"))
+    builder.row(InlineKeyboardButton(text="🔍 Найти группу", callback_data="searchgroup"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
@@ -832,6 +924,7 @@ def build_online_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="📋 Вся неделя", callback_data="onlinefull"),
     )
     builder.row(InlineKeyboardButton(text="📆 Выбрать день", callback_data="onlinechooseday"))
+    builder.row(InlineKeyboardButton(text="🔍 Найти группу", callback_data="searchgroup"))
     builder.row(InlineKeyboardButton(text="🔔 Настроить подписки", callback_data="subonline"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
@@ -1376,6 +1469,27 @@ async def main_live_callback(callback: CallbackQuery):
     await send_or_edit(callback, "🏙 <b>Живые встречи</b>\n\nПроходят очно в выбранном городе.", parse_mode=HTML_MODE, reply_markup=build_live_root_keyboard(get_user_sub(str(callback.from_user.id))))
 
 
+@DP.callback_query(F.data == "searchgroup")
+async def search_group_callback(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(GroupNameSearch.waiting_for_name)
+    await send_or_edit(callback, "Введите часть названия группы:", reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
+
+
+@DP.message(StateFilter(GroupNameSearch.waiting_for_name))
+async def search_group_input(message: Message, state: FSMContext):
+    await state.clear()
+    query = (message.text or "").strip()
+    if len(query) < 2:
+        await message.answer("Введите минимум 2 символа.", reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
+        return
+    await message.answer(
+        format_search_results(query),
+        parse_mode=HTML_MODE,
+        disable_web_page_preview=True,
+        reply_markup=back_markup("⬅️ Главное меню", "mainmenu"),
+    )
+
+
 @DP.callback_query(F.data == "livechoosecountry")
 async def live_choose_country_callback(callback: CallbackQuery):
     await send_or_edit(callback, "🌍 Выберите страну:", parse_mode=HTML_MODE, reply_markup=build_live_country_keyboard())
@@ -1838,6 +1952,12 @@ async def btn_contacts(message: Message):
 async def btn_unsubscribe_all(message: Message):
     remove_subscriber(str(message.from_user.id))
     await message.answer("🔕 Вы отписались от всех уведомлений.", reply_markup=build_main_menu_keyboard())
+
+
+@DP.message(F.text == "🔍 Найти группу")
+async def btn_search_group(message: Message, state: FSMContext):
+    await state.set_state(GroupNameSearch.waiting_for_name)
+    await message.answer("Введите часть названия группы:", reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
 
 
 @DP.message()
