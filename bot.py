@@ -47,6 +47,8 @@ DAYS = [
     "Воскресенье",
 ]
 
+DAY_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+
 SLOGANS_AND_AFFIRMATIONS = [
     "Программа простая, но не лёгкая",
     "Жизнь больше, чем просто выживание",
@@ -767,7 +769,7 @@ def format_search_results(query: str) -> str:
         for name, occurrences in online_matches[:20]:
             parts = []
             for day_index, time_str, url in sorted(occurrences, key=lambda x: (x[0], x[1]))[:10]:
-                parts.append(f"{DAYS[day_index][:2]} {time_str}")
+                parts.append(f"{DAY_SHORT[day_index]} {time_str}")
             url = occurrences[0][2]
             extra = "…" if len(occurrences) > 10 else ""
             lines.append(f'• <a href="{url}">{escape_html(name)}</a> — {escape_html(", ".join(parts) + extra)}')
@@ -779,7 +781,7 @@ def format_search_results(query: str) -> str:
         for group in live_matches[:20]:
             day_parts = []
             for entry in sorted(group.get("days", []), key=lambda e: (e.get("day", 0), e.get("start", "")))[:7]:
-                day_parts.append(f"{DAYS[entry['day']][:2]} {entry['start']}")
+                day_parts.append(f"{DAY_SHORT[entry['day']]} {entry['start']}")
             days_text = ", ".join(day_parts) if day_parts else "расписание не распознано"
             lines.append(
                 f"• <b>{escape_html(group['name'])}</b> — "
