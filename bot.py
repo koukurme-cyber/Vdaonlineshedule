@@ -254,10 +254,10 @@ REPLY_MAIN_MENU = ReplyKeyboardMarkup(
         ],
         [
             KeyboardButton(text="🔔 Мои подписки"),
-            KeyboardButton(text="Ещё"),
+            KeyboardButton(text="🔍 Найти группу"),
         ],
         [
-            KeyboardButton(text="🔍 Найти группу"),
+            KeyboardButton(text="Ещё"),
         ],
     ],
     resize_keyboard=True,
@@ -333,7 +333,9 @@ def normalize_settings(settings: Optional[dict], fallback_hour: int, fallback_re
         daily_hour = fallback_hour
     if daily_hour not in DAY_HOUR_CHOICES:
         daily_hour = DEFAULT_DAILY_HOUR
+    daily_enabled = settings.get("daily_enabled", settings.get("dailyenabled", True))
     return {
+        "daily_enabled": bool(daily_enabled),
         "daily_hour": daily_hour,
         "remind_before": normalize_remind_before(settings.get("remind_before", fallback_remind)),
     }
@@ -862,9 +864,9 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
     )
     builder.row(
         InlineKeyboardButton(text="🔔 Мои подписки", callback_data="mainsub"),
-        InlineKeyboardButton(text="Ещё", callback_data="mainmore"),
+        InlineKeyboardButton(text="🔍 Найти группу", callback_data="searchgroup"),
     )
-    builder.row(InlineKeyboardButton(text="🔍 Найти группу", callback_data="searchgroup"))
+    builder.row(InlineKeyboardButton(text="Ещё", callback_data="mainmore"))
     return builder.as_markup()
 
 
@@ -890,7 +892,8 @@ HELP_TEXT = (
     '/slogan — получить случайную фразу поддержки.\n\n'
     '<b>Подписки</b>\n'
     'Можно подписаться на все онлайн-группы, все живые группы выбранного города или отдельные группы. '
-    'Напоминания настраиваются отдельно для онлайн- и живых встреч.'
+    'Утренняя сводка и напоминания за 1/2 часа настраиваются отдельно для онлайн- и живых встреч. '
+    'Сводку можно отключить, оставив только напоминания перед началом групп.'
 )
 
 
@@ -1160,10 +1163,10 @@ def get_today_live_subscriptions(user_data: dict):
     return [item for item in get_live_groups_for_day(city, moscow_now().weekday(), user_data.get("country")) if is_user_subscribed_to_live(user_data, item[0])]
 
 
-def build_daily_message(user_data: dict) -> Optional[str]:
+def build_daily_message(user_data: dict, include_online: bool = True, include_live: bool = True) -> Optional[str]:
     day_index = moscow_now().weekday()
-    online_groups = get_today_online_subscriptions(user_data)
-    live_groups = get_today_live_subscriptions(user_data)
+    online_groups = get_today_online_subscriptions(user_data) if include_online else []
+    live_groups = get_today_live_subscriptions(user_data) if include_live else []
     if not online_groups and not live_groups:
         return None
     parts = [f"☀ Доброе утро. Вот ваши группы на сегодня, <b>{DAYS[day_index]}</b>:"]
@@ -1286,28 +1289,47 @@ async def send_daily_notifications(bot: Bot, now_dt: datetime):
     today_str = now_dt.strftime("%Y-%m-%d")
     for uid, raw_data in subs.items():
         user_data = normalize_user_sub(raw_data)
-        should_send_online = has_online_subscriptions(user_data) and now_dt.hour == get_online_settings(user_data)["daily_hour"]
-        should_send_live = has_live_subscriptions(user_data) and now_dt.hour == get_live_settings(user_data)["daily_hour"]
+        meta = user_data.setdefault("meta", {})
+        online_settings = get_online_settings(user_data)
+        live_settings = get_live_settings(user_data)
+
+        legacy_daily_sent = meta.get("last_daily_sent") == today_str
+        has_split_daily_marks = bool(meta.get("last_daily_sent_online") or meta.get("last_daily_sent_live"))
+        online_already_sent = meta.get("last_daily_sent_online") == today_str or (legacy_daily_sent and not has_split_daily_marks)
+        live_already_sent = meta.get("last_daily_sent_live") == today_str or (legacy_daily_sent and not has_split_daily_marks)
+
+        should_send_online = (
+            has_online_subscriptions(user_data)
+            and online_settings.get("daily_enabled", True)
+            and now_dt.hour == online_settings["daily_hour"]
+            and not online_already_sent
+        )
+        should_send_live = (
+            has_live_subscriptions(user_data)
+            and live_settings.get("daily_enabled", True)
+            and now_dt.hour == live_settings["daily_hour"]
+            and not live_already_sent
+        )
         if not (should_send_online or should_send_live):
             subs[uid] = user_data
             continue
-        if user_data["meta"].get("last_daily_sent") == today_str:
-            subs[uid] = user_data
-            continue
-        text = build_daily_message(user_data)
+
+        text = build_daily_message(user_data, include_online=should_send_online, include_live=should_send_live)
         if not text:
             subs[uid] = user_data
             continue
         try:
             await bot.send_message(int(uid), text, parse_mode=HTML_MODE, disable_web_page_preview=True)
-            user_data["meta"]["last_daily_sent"] = today_str
+            if should_send_online:
+                meta["last_daily_sent_online"] = today_str
+            if should_send_live:
+                meta["last_daily_sent_live"] = today_str
             changed = True
         except Exception as e:
             print(f"daily send failed for {uid}: {e}")
         subs[uid] = user_data
     if changed:
         STORE.save_all(subs)
-
 
 async def send_hourly_reminders(bot: Bot, now_dt: datetime):
     subs = STORE.load_all()
@@ -1408,11 +1430,16 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
     settings = get_online_settings(user_data) if group_type == "online" else get_live_settings(user_data)
     title = "🌐 Настройки онлайн" if group_type == "online" else "🏙 Настройки живых"
     prefix = "online" if group_type == "online" else "live"
+    daily_enabled = settings.get("daily_enabled", True)
     builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(
+        text="✅ Утренняя сводка включена" if daily_enabled else "Утренняя сводка выключена",
+        callback_data=f"toggledaily:{prefix}",
+    ))
     for hour in DAY_HOUR_CHOICES:
-        checked = "✅ " if settings["daily_hour"] == hour else ""
+        checked = "✅ " if daily_enabled and settings["daily_hour"] == hour else ""
         builder.button(text=f"{checked}{hour:02d}:00", callback_data=f"setdailyhour:{prefix}:{hour}")
-    builder.adjust(len(DAY_HOUR_CHOICES))
+    builder.adjust(1, len(DAY_HOUR_CHOICES))
     remind_set = set(settings["remind_before"])
     builder.row(
         InlineKeyboardButton(text="✅ За 1 час" if remind_set == {60} else "За 1 час", callback_data=f"setremind:{prefix}:1"),
@@ -1421,13 +1448,13 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
     )
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
+    daily_text = f"включена, {settings['daily_hour']:02d}:00" if daily_enabled else "выключена"
     text = (
         f"<b>{title}</b>\n\n"
-        f"🕖 Утреннее расписание: <b>{settings['daily_hour']:02d}:00</b>\n"
+        f"🕖 Утренняя сводка: <b>{daily_text}</b>\n"
         f"⏰ Напоминания: <b>{format_remind_label(settings['remind_before'])}</b>"
     )
     await send_or_edit(target, text, parse_mode=HTML_MODE, reply_markup=builder.as_markup())
-
 
 DP = Dispatcher(storage=MemoryStorage())
 
@@ -1733,12 +1760,24 @@ async def sub_settings_live(callback: CallbackQuery):
     await settings_menu(callback, "live")
 
 
+@DP.callback_query(F.data.startswith("toggledaily:"))
+async def toggle_daily_summary(callback: CallbackQuery):
+    _, group_type = callback.data.split(":")
+    uid = str(callback.from_user.id)
+    user_data = get_user_sub(uid)
+    settings = user_data[f"{group_type}_settings"]
+    settings["daily_enabled"] = not settings.get("daily_enabled", True)
+    set_user_sub(uid, user_data)
+    await settings_menu(callback, group_type)
+
+
 @DP.callback_query(F.data.startswith("setdailyhour:"))
 async def set_daily_hour(callback: CallbackQuery):
     _, group_type, hour = callback.data.split(":")
     uid = str(callback.from_user.id)
     user_data = get_user_sub(uid)
     user_data[f"{group_type}_settings"]["daily_hour"] = int(hour)
+    user_data[f"{group_type}_settings"]["daily_enabled"] = True
     set_user_sub(uid, user_data)
     await settings_menu(callback, group_type)
 
