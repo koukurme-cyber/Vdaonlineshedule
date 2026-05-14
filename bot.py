@@ -1445,6 +1445,7 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
         builder.adjust(1, len(DAY_HOUR_CHOICES))
 
     remind_set = set(settings["remind_before"])
+    builder.row(InlineKeyboardButton(text="⏰ Напоминания", callback_data="noop"))
     builder.row(
         InlineKeyboardButton(text="✅ За 1 час" if remind_set == {60} else "За 1 час", callback_data=f"setremind:{prefix}:1"),
         InlineKeyboardButton(text="✅ За 2 часа" if remind_set == {120} else "За 2 часа", callback_data=f"setremind:{prefix}:2"),
@@ -1464,6 +1465,11 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
     await send_or_edit(target, text, parse_mode=HTML_MODE, reply_markup=builder.as_markup())
 
 DP = Dispatcher(storage=MemoryStorage())
+
+
+@DP.callback_query(F.data == "noop")
+async def noop_callback(callback: CallbackQuery):
+    await safe_callback_answer(callback)
 
 
 @DP.message(Command("start"))
