@@ -257,7 +257,7 @@ REPLY_MAIN_MENU = ReplyKeyboardMarkup(
             KeyboardButton(text="🔍 Найти группу"),
         ],
         [
-            KeyboardButton(text="Ещё"),
+            KeyboardButton(text="Контакты"),
         ],
     ],
     resize_keyboard=True,
@@ -866,7 +866,7 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🔔 Мои подписки", callback_data="mainsub"),
         InlineKeyboardButton(text="🔍 Найти группу", callback_data="searchgroup"),
     )
-    builder.row(InlineKeyboardButton(text="Ещё", callback_data="mainmore"))
+    builder.row(InlineKeyboardButton(text="Контакты", callback_data="maincontacts"))
     return builder.as_markup()
 
 
@@ -885,7 +885,7 @@ HELP_TEXT = (
     '🌐 Онлайн-встречи — расписание онлайн-групп по дням.\n'
     '🏙 Живые встречи — очные группы по стране, городу и дню недели.\n'
     '🔔 Мои подписки — выбранные группы, утреннее расписание и напоминания.\n'
-    'Ещё — фраза поддержки, контакты и справка.\n\n'
+    'Контакты — куда писать по вопросам актуализации информации о группах.\n\n'
     '<b>Команды</b>\n'
     '/start — открыть главное меню.\n'
     '/help — показать эту справку.\n'
@@ -1565,7 +1565,7 @@ async def main_contacts_callback(callback: CallbackQuery):
         CONTACTS_TEXT,
         parse_mode=HTML_MODE,
         disable_web_page_preview=True,
-        reply_markup=back_markup("← Ещё", "mainmore"),
+        reply_markup=back_markup("⬅️ Главное меню", "mainmenu"),
     )
 
 
@@ -1985,7 +1985,7 @@ async def btn_contacts(message: Message):
         CONTACTS_TEXT,
         parse_mode=HTML_MODE,
         disable_web_page_preview=True,
-        reply_markup=back_markup("← Ещё", "mainmore"),
+        reply_markup=back_markup("⬅️ Главное меню", "mainmenu"),
     )
 
 
