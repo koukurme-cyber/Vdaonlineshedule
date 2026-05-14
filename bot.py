@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import json
 import os
+
 import random
 import re
 from datetime import datetime, timedelta
@@ -738,7 +739,7 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
 
 CONTACTS_TEXT = (
     'По вопросам актуализации информации о группах пишите '
-    '<a href="https://t.me/kokurme2022">сюда</a> '
+    '<a href="https://t.me/koukurme2022">сюда</a> '
     'либо на <a href="https://adultchildren.ru/">официальный сайт РКО ВДА</a>.'
 )
 
