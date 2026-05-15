@@ -261,18 +261,12 @@ class GroupNameSearch(StatesGroup):
 
 REPLY_MAIN_MENU = ReplyKeyboardMarkup(
     keyboard=[
-        [
-            KeyboardButton(text="🌐 Онлайн-встречи"),
-            KeyboardButton(text="🏙 Живые встречи"),
-        ],
-        [
-            KeyboardButton(text="🔔 Мои подписки"),
-            KeyboardButton(text="Настройки подписок"),
-        ],
-        [
-            KeyboardButton(text="🔍 Найти группу"),
-            KeyboardButton(text="Контакты"),
-        ],
+        [KeyboardButton(text="🌐 Онлайн-встречи")],
+        [KeyboardButton(text="🏙 Живые встречи")],
+        [KeyboardButton(text="🔔 Мои подписки")],
+        [KeyboardButton(text="Настройки подписок")],
+        [KeyboardButton(text="🔍 Найти группу")],
+        [KeyboardButton(text="Контакты")],
     ],
     resize_keyboard=True,
     is_persistent=True,
@@ -872,18 +866,12 @@ def back_markup(text: str, callback_data: str) -> InlineKeyboardMarkup:
 
 def build_main_menu_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="🌐 Онлайн-встречи", callback_data="mainonline"),
-        InlineKeyboardButton(text="🏙 Живые встречи", callback_data="mainlive"),
-    )
-    builder.row(
-        InlineKeyboardButton(text="🔔 Мои подписки", callback_data="mainmygroups"),
-        InlineKeyboardButton(text="Настройки подписок", callback_data="settingsroot"),
-    )
-    builder.row(
-        InlineKeyboardButton(text="🔍 Найти группу", callback_data="searchgroup"),
-        InlineKeyboardButton(text="Контакты", callback_data="maincontacts"),
-    )
+    builder.row(InlineKeyboardButton(text="🌐 Онлайн-встречи", callback_data="mainonline"))
+    builder.row(InlineKeyboardButton(text="🏙 Живые встречи", callback_data="mainlive"))
+    builder.row(InlineKeyboardButton(text="🔔 Мои подписки", callback_data="mainmygroups"))
+    builder.row(InlineKeyboardButton(text="Настройки подписок", callback_data="settingsroot"))
+    builder.row(InlineKeyboardButton(text="🔍 Найти группу", callback_data="searchgroup"))
+    builder.row(InlineKeyboardButton(text="Контакты", callback_data="maincontacts"))
     return builder.as_markup()
 
 
@@ -1051,7 +1039,6 @@ def build_subscriptions_menu() -> InlineKeyboardMarkup:
     builder.row(InlineKeyboardButton(text="Мои подписки", callback_data="mainmygroups"))
     builder.row(InlineKeyboardButton(text="Выбрать онлайн-группы", callback_data="subonline"))
     builder.row(InlineKeyboardButton(text="Выбрать живые группы", callback_data="sublive"))
-    builder.row(InlineKeyboardButton(text="Настройки подписок", callback_data="settingsroot"))
     builder.row(InlineKeyboardButton(text="🔕 Отписаться от всего", callback_data="mainunsubscribe"))
     builder.row(InlineKeyboardButton(text="← Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
@@ -1074,7 +1061,6 @@ def build_settings_root_menu() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🌐 Онлайн", callback_data="subsettingsonline"),
         InlineKeyboardButton(text="🏙 Живые", callback_data="subsettingslive"),
     )
-    builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
