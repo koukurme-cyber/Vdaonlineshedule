@@ -271,7 +271,7 @@ REPLY_MAIN_MENU = ReplyKeyboardMarkup(
             KeyboardButton(text="Настройки подписок"),
         ],
         [
-            KeyboardButton(text="🔍 Найти группу"),
+            KeyboardButton(text="🔎 Найти группу или город"),
             KeyboardButton(text="Контакты"),
         ],
     ],
@@ -774,12 +774,22 @@ def collect_live_group_matches(query: str) -> List[dict]:
 
 
 def format_search_results(query: str) -> str:
+    city_matches = get_searchable_cities(query)
     online_matches = collect_online_group_matches(query)
     live_matches = collect_live_group_matches(query)
-    if not online_matches and not live_matches:
-        return f"По запросу «{escape_html(query)}» группы не найдены."
+    if not city_matches and not online_matches and not live_matches:
+        return f"По запросу «{escape_html(query)}» ничего не найдено."
 
-    lines = [f"🔍 <b>Поиск группы:</b> {escape_html(query)}"]
+    lines = [f"🔎 <b>Поиск:</b> {escape_html(query)}"]
+
+    if city_matches:
+        lines.append("\n📍 <b>Города</b>")
+        for country, city in sorted(city_matches, key=lambda x: (x[0] != "Россия", x[0].lower(), city_sort_key(x[1])))[:20]:
+            count = len(get_live_groups_for_city(city, country))
+            suffix = f" — {count} групп" if count else ""
+            lines.append(f"• {escape_html(get_country_city_label(country, city))}{escape_html(suffix)}")
+        if len(city_matches) > 20:
+            lines.append(f"…и ещё {len(city_matches) - 20} городов. Уточните запрос.")
 
     if online_matches:
         lines.append("\n🌐 <b>Онлайн</b>")
@@ -882,7 +892,7 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="Настройки подписок", callback_data="settingsroot"),
     )
     builder.row(
-        InlineKeyboardButton(text="🔍 Найти группу", callback_data="searchgroup"),
+        InlineKeyboardButton(text="🔎 Найти группу или город", callback_data="searchgroup"),
         InlineKeyboardButton(text="Контакты", callback_data="maincontacts"),
     )
     return builder.as_markup()
@@ -903,7 +913,7 @@ HELP_TEXT = (
     '🌐 Онлайн-встречи — расписание онлайн-групп по дням.\n'
     '🏙 Живые встречи — очные группы по стране, городу и дню недели.\n'
     '🔔 Мои подписки — выбранные группы, утреннее расписание и напоминания.\n'
-    'Контакты — куда писать по вопросам актуализации информации о группах.\n\n'
+    '🔎 Найти группу или город — поиск по онлайн-группам, живым группам и городам.\nКонтакты — куда писать по вопросам актуализации информации о группах.\n\n'
     '<b>Команды</b>\n'
     '/start — открыть главное меню.\n'
     '/help — показать эту справку.\n'
@@ -935,8 +945,8 @@ def build_live_root_keyboard(user_data: Optional[dict] = None) -> InlineKeyboard
             callback_data="livemycity",
         ))
     builder.row(InlineKeyboardButton(text="🌍 Выбрать страну", callback_data="livechoosecountry"))
-    builder.row(InlineKeyboardButton(text="🔍 Найти город", callback_data="livesearchcity"))
-    builder.row(InlineKeyboardButton(text="🔍 Найти группу", callback_data="searchgroup"))
+    builder.row(InlineKeyboardButton(text="📍 Найти город", callback_data="livesearchcity"))
+    builder.row(InlineKeyboardButton(text="🔎 Найти группу или город", callback_data="searchgroup"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
@@ -947,7 +957,7 @@ def build_online_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="📋 Вся неделя", callback_data="onlinefull"),
     )
     builder.row(InlineKeyboardButton(text="📆 Выбрать день", callback_data="onlinechooseday"))
-    builder.row(InlineKeyboardButton(text="🔍 Найти группу", callback_data="searchgroup"))
+    builder.row(InlineKeyboardButton(text="🔎 Найти группу или город", callback_data="searchgroup"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
@@ -956,7 +966,7 @@ def build_live_country_keyboard(prefix: str = "livecountry", back_callback: str 
     for country in get_countries_with_live_groups():
         builder.button(text=country, callback_data=f"{prefix}{COUNTRY_TO_ID[country]}")
     builder.adjust(2)
-    builder.row(InlineKeyboardButton(text="🔍 Найти город", callback_data="livesearchcity"))
+    builder.row(InlineKeyboardButton(text="📍 Найти город", callback_data="livesearchcity"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu" if back_callback == "modelive" else back_callback))
     return builder.as_markup()
 
@@ -1017,7 +1027,7 @@ def build_live_city_keyboard(country: str, page: int = 0) -> InlineKeyboardMarku
     page, _ = add_city_page_buttons(builder, "livecity", country, page)
     add_city_pagination_buttons(builder, country, page, "livecountry")
     builder.row(InlineKeyboardButton(text="← К странам", callback_data="livechoosecountry"))
-    builder.row(InlineKeyboardButton(text="🔍 Найти город", callback_data="livesearchcity"))
+    builder.row(InlineKeyboardButton(text="📍 Найти город", callback_data="livesearchcity"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
@@ -1453,7 +1463,7 @@ async def show_sub_live_country_selector(target: CallbackQuery | Message):
     for country in get_countries_with_live_groups():
         builder.button(text=country, callback_data=f"sublivecountry{COUNTRY_TO_ID[country]}")
     builder.adjust(2)
-    builder.row(InlineKeyboardButton(text="🔍 Найти город", callback_data="sublivecitysearch"))
+    builder.row(InlineKeyboardButton(text="📍 Найти город", callback_data="sublivecitysearch"))
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     await send_or_edit(target, "🌍 Выберите страну для живых подписок:", reply_markup=builder.as_markup())
@@ -1464,7 +1474,7 @@ async def show_sub_live_city_selector(target: CallbackQuery | Message, country: 
     page, total = add_city_page_buttons(builder, "sublivecity", country, page)
     add_city_pagination_buttons(builder, country, page, "sublivecountry")
     builder.row(InlineKeyboardButton(text="← К странам", callback_data="sublivecitychange"))
-    builder.row(InlineKeyboardButton(text="🔍 Найти город", callback_data="sublivecitysearch"))
+    builder.row(InlineKeyboardButton(text="📍 Найти город", callback_data="sublivecitysearch"))
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     await send_or_edit(target, city_page_title(country, page, total), parse_mode=HTML_MODE, reply_markup=builder.as_markup())
@@ -1593,7 +1603,7 @@ async def main_live_callback(callback: CallbackQuery):
 @DP.callback_query(F.data == "searchgroup")
 async def search_group_callback(callback: CallbackQuery, state: FSMContext):
     await state.set_state(GroupNameSearch.waiting_for_name)
-    await send_or_edit(callback, "Введите часть названия группы:", reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
+    await send_or_edit(callback, "Введите название группы или город:", reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
 
 
 @DP.message(StateFilter(GroupNameSearch.waiting_for_name))
@@ -2097,10 +2107,11 @@ async def btn_unsubscribe_all(message: Message):
     await message.answer("🔕 Вы отписались от всех уведомлений.", reply_markup=REPLY_MAIN_MENU)
 
 
+@DP.message(F.text == "🔎 Найти группу или город")
 @DP.message(F.text == "🔍 Найти группу")
 async def btn_search_group(message: Message, state: FSMContext):
     await state.set_state(GroupNameSearch.waiting_for_name)
-    await message.answer("Введите часть названия группы:", reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
+    await message.answer("Введите название группы или город:", reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
 
 
 @DP.message()
