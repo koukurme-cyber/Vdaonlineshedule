@@ -654,7 +654,7 @@ def abbreviate_place_hint(text: str, max_len: int = 22) -> str:
         (r"\bНабережная\b", "наб."),
         (r"\bшоссе\b", "ш."),
         (r"\bШоссе\b", "ш."),
-        (r"\bВасилеостровская\b", "Василеостр."),
+        (r"\bВасилеостровская\b", "В.О."),
         (r"\bВладимирская\b", "Владим."),
         (r"\bДостоевская\b", "Достоевск."),
         (r"\bНовочеркасская\b", "Новочерк."),
@@ -671,9 +671,36 @@ def abbreviate_place_hint(text: str, max_len: int = 22) -> str:
     return text
 
 
+
+def short_group_name_for_button(name: str, max_len: int = 34) -> str:
+    """Короткое название только для кнопок. Полное название остаётся в карточке группы."""
+    text = re.sub(r"\s+", " ", str(name or "").strip())
+    replacements = {
+        'Говори, доверяй, чувствуй': 'Говори, доверяй…',
+        'Говори, доверяй, чувствуй”': 'Говори, доверяй…',
+        'Говори Доверяй Чувствуй': 'Говори, доверяй…',
+        'Доверие (Любящий Родитель)': 'Доверие (ЛР)',
+        'Восстановление связи с Любящим Родителем': 'Любящий Родитель',
+        'Практика применения пособия «Любящий родитель»': 'Практика ЛР',
+        'Практика применения пособия Любящий родитель': 'Практика ЛР',
+        'Практика применения пособия Любящий Родитель': 'Практика ЛР',
+        'Практика применения пособия "Любящий родитель"': 'Практика ЛР',
+        'Практика применения пособия «Любящий Родитель»': 'Практика ЛР',
+    }
+    if text in replacements:
+        return replacements[text]
+
+    text = re.sub(r"Восст\.?\s*Люб\.?\s*Род\.?", "Любящий Родитель", text, flags=re.IGNORECASE)
+    text = re.sub(r"Любящ(?:ий|им|его|ему)\s+Родител(?:ь|ем|я|ю)", "ЛР", text, flags=re.IGNORECASE)
+    text = re.sub(r"любящ(?:ий|им|его|ему)\s+родител(?:ь|ем|я|ю)", "ЛР", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+", " ", text).strip()
+    return trim_button_text(text, max_len=max_len)
+
+
 def live_subscription_list_button_text(group: dict, bell: str, max_len: int = 60) -> str:
     """Кнопка списка подписок: полное название в приоритете, затем время, затем короткий ориентир."""
-    name = re.sub(r"\s+", " ", str(group.get("name", "")).strip())
+    full_name = re.sub(r"\s+", " ", str(group.get("name", "")).strip())
+    name = short_group_name_for_button(full_name, max_len=34)
     schedule = compact_live_schedule_for_button(group, max_len=22)
     hint = abbreviate_place_hint(compact_address_hint(group.get("address", ""), max_len=32), max_len=18)
 
@@ -1927,7 +1954,8 @@ async def show_sub_online_list(target: CallbackQuery | Message, page: int = 0):
         subscribed = is_user_subscribed_to_online(user_data, name)
         bell = "🔔" if subscribed else "🔕"
         schedule = compact_online_schedule_for_button(name, max_len=34)
-        button_text = trim_button_text(f"{bell} {name} · {schedule}", max_len=60)
+        button_name = short_group_name_for_button(name, max_len=34)
+        button_text = trim_button_text(f"{bell} {button_name} · {schedule}", max_len=60)
         builder.row(InlineKeyboardButton(text=button_text, callback_data=f"subonlineinfo:{page}:{gid}"))
 
     if total_pages > 1:
