@@ -1999,12 +1999,22 @@ def compact_days_only_schedule_for_button(schedule_text: str) -> str:
     return ", ".join(found)
 
 
-def live_subscription_button_text(group: dict) -> str:
+def live_days_only_for_button(group: dict) -> str:
+    entries = [
+        e for e in group.get("days", [])
+        if isinstance(e.get("day"), int) and 0 <= e.get("day") < len(DAY_SHORT)
+    ]
+    if not entries:
+        return ""
+    days = sorted({e["day"] for e in entries})
+    return format_day_list(days)
+
+
+def live_subscription_button_text(group: dict, max_len: int = 58) -> str:
     name = shorten_group_name_for_button(group.get("name", ""))
-    days = compact_days_only_schedule_for_button(format_live_group_schedule_compact(group))
-    if days:
-        return f"{name} · {days}"
-    return name
+    days = live_days_only_for_button(group)
+    text = f"{name} · {days}" if days else name
+    return trim_button_text(text, max_len=max_len)
 
 
 def online_subscription_button_text(name: str) -> str:
@@ -2083,7 +2093,7 @@ def online_subscription_card_text(name: str, user_data: dict) -> str:
 
 def online_subscription_card_keyboard(gid: str, page: int, user_data: dict) -> InlineKeyboardMarkup:
     name = ONLINE_GROUP_ID_TO_NAME.get(gid, "")
-    sub_text = "🔕 Отключить подписку" if is_user_subscribed_to_online(user_data, name) else "🔔 Включить подписку"
+    sub_text = "Отключить подписку" if is_user_subscribed_to_online(user_data, name) else "Включить подписку"
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=sub_text, callback_data=f"subonlineinfotoggle:{page}:{gid}"))
     builder.row(InlineKeyboardButton(text="← К онлайн-группам", callback_data=f"subonlinepage:{page}"))
@@ -2169,7 +2179,7 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str, country
         gid = make_short_id("l", name)
         subscribed = is_user_subscribed_to_live(user_data, name)
         bell = "🔔" if subscribed else "🔕"
-        button_text = live_subscription_list_button_text(group, bell, max_len=48)
+        button_text = f"{live_subscription_button_text(group)} {bell}"
         builder.row(InlineKeyboardButton(text=button_text, callback_data=f"subliveinfo:{page}:{gid}"))
 
     if total_pages > 1:
@@ -2220,7 +2230,7 @@ def live_subscription_card_text(group: dict, user_data: dict) -> str:
 
 def live_subscription_card_keyboard(gid: str, page: int, user_data: dict, group: dict) -> InlineKeyboardMarkup:
     name = group.get("name", "")
-    sub_text = "🔕 Отключить подписку" if is_user_subscribed_to_live(user_data, name) else "🔔 Включить подписку"
+    sub_text = "Отключить подписку" if is_user_subscribed_to_live(user_data, name) else "Включить подписку"
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=sub_text, callback_data=f"subliveinfotoggle:{page}:{gid}"))
     builder.row(InlineKeyboardButton(text="← К живым группам", callback_data=f"sublivepage:{page}"))
