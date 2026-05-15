@@ -1555,7 +1555,7 @@ async def noop_callback(callback: CallbackQuery):
 @DP.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer("Выберите раздел ниже.", reply_markup=REPLY_MAIN_MENU)
-    await message.answer("🏠 <b>Главное меню</b>\n\n🌐 Онлайн-встречи — Telegram / Zoom / MAX\n🏙 Живые встречи — очно в выбранном городе", parse_mode=HTML_MODE, reply_markup=build_main_menu_keyboard())
+    await message.answer("🏠 <b>Главное меню</b>\n\nИспользуйте кнопки нижнего меню.", parse_mode=HTML_MODE)
 
 
 @DP.message(Command("help"))
@@ -1578,7 +1578,7 @@ async def cmd_slogan(message: Message):
 
 @DP.callback_query(F.data == "mainmenu")
 async def main_menu_callback(callback: CallbackQuery):
-    await send_or_edit(callback, "🏠 <b>Главное меню</b>\n\n🌐 Онлайн-встречи — Telegram / Zoom / MAX\n🏙 Живые встречи — очно в выбранном городе", parse_mode=HTML_MODE, reply_markup=build_main_menu_keyboard())
+    await send_or_edit(callback, "🏠 <b>Главное меню</b>\n\nИспользуйте кнопки нижнего меню.", parse_mode=HTML_MODE, reply_markup=None)
 
 
 @DP.callback_query(F.data == "mainonline")
