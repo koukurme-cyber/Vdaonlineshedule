@@ -35,6 +35,7 @@ DEFAULT_REMIND_BEFORE = [60]
 HTML_MODE = "HTML"
 DAY_HOUR_CHOICES = [5, 6, 7, 8, 9]
 MAX_MESSAGE_LEN = 3800
+ONLINE_TIME_NOTE = "Время указано московское."
 CITY_PAGE_SIZE = 40
 
 DAYS = [
@@ -1582,7 +1583,7 @@ async def main_menu_callback(callback: CallbackQuery):
 
 @DP.callback_query(F.data == "mainonline")
 async def main_online_callback(callback: CallbackQuery):
-    await send_or_edit(callback, "🌐 <b>Онлайн-встречи</b>\n\nПроходят в Telegram / Zoom / MAX.", parse_mode=HTML_MODE, reply_markup=build_online_menu_keyboard())
+    await send_or_edit(callback, "🌐 <b>Онлайн-встречи</b>\n\nПроходят в Telegram / Zoom / MAX.\nВремя указано московское.", parse_mode=HTML_MODE, reply_markup=build_online_menu_keyboard())
 
 
 @DP.callback_query(F.data == "mainlive")
@@ -1691,7 +1692,7 @@ async def main_my_groups_callback(callback: CallbackQuery):
 @DP.callback_query(F.data == "mainunsubscribe")
 async def main_unsubscribe_callback(callback: CallbackQuery):
     remove_subscriber(str(callback.from_user.id))
-    await send_or_edit(callback, "🔕 Вы отписались от всех уведомлений.", reply_markup=build_main_menu_keyboard())
+    await send_or_edit(callback, "🔕 Вы отписались от всех уведомлений.")
 
 
 @DP.callback_query(F.data == "submainback")
@@ -1892,7 +1893,7 @@ async def online_today(callback: CallbackQuery):
     user_data = get_user_sub(str(callback.from_user.id))
     day_index = moscow_now().weekday()
     groups = get_online_by_day(day_index)
-    text = f"{format_day_header(DAYS[day_index])}\n\n"
+    text = f"{format_day_header(DAYS[day_index])}\n{ONLINE_TIME_NOTE}\n\n"
     text += "\n".join(format_online_group_with_sub(t, n, u, user_data) for t, n, u in groups) if groups else "Нет групп."
     await send_or_edit(callback, text, parse_mode=HTML_MODE, disable_web_page_preview=True, reply_markup=back_markup("← К онлайн", "mainonline"))
 
@@ -1901,7 +1902,7 @@ async def online_today(callback: CallbackQuery):
 async def online_full(callback: CallbackQuery):
     await send_long_text(
         callback,
-        "📋 Онлайн на всю неделю:",
+        "📋 Онлайн на всю неделю:\nВремя указано московское.",
         get_online_full(),
         final_markup=back_markup("← К онлайн", "mainonline"),
         parse_mode=HTML_MODE,
@@ -1919,7 +1920,7 @@ async def online_show_day(callback: CallbackQuery):
     day_index = int(callback.data[len("onlineday"):])
     user_data = get_user_sub(str(callback.from_user.id))
     groups = get_online_by_day(day_index)
-    text = f"{format_day_header(DAYS[day_index])}\n\n"
+    text = f"{format_day_header(DAYS[day_index])}\n{ONLINE_TIME_NOTE}\n\n"
     text += "\n".join(format_online_group_with_sub(t, n, u, user_data) for t, n, u in groups) if groups else "Нет групп."
     await send_or_edit(callback, text, parse_mode=HTML_MODE, disable_web_page_preview=True, reply_markup=back_markup("← К дням", "onlinechooseday"))
 
@@ -2021,7 +2022,7 @@ async def live_show_day(callback: CallbackQuery):
 @DP.message(F.text == "🌐 Онлайн")
 @DP.message(F.text == "🌐 Онлайн-встречи")
 async def btn_online(message: Message):
-    await message.answer("🌐 <b>Онлайн-встречи</b>\n\nПроходят в Telegram / Zoom / MAX.", parse_mode=HTML_MODE, reply_markup=build_online_menu_keyboard())
+    await message.answer("🌐 <b>Онлайн-встречи</b>\n\nПроходят в Telegram / Zoom / MAX.\nВремя указано московское.", parse_mode=HTML_MODE, reply_markup=build_online_menu_keyboard())
 
 
 @DP.message(F.text == "🏙 Живые")
@@ -2094,7 +2095,7 @@ async def btn_contacts(message: Message):
 @DP.message(F.text == "❌ Отписаться от всего")
 async def btn_unsubscribe_all(message: Message):
     remove_subscriber(str(message.from_user.id))
-    await message.answer("🔕 Вы отписались от всех уведомлений.", reply_markup=build_main_menu_keyboard())
+    await message.answer("🔕 Вы отписались от всех уведомлений.", reply_markup=REPLY_MAIN_MENU)
 
 
 @DP.message(F.text == "🔍 Найти группу")
