@@ -1949,7 +1949,7 @@ def compact_time_only_for_button(time_text: str) -> str:
 
 
 def subscription_action_label(is_subscribed: bool) -> str:
-    return "Отписаться" if is_subscribed else "Подписаться"
+    return "🔔" if is_subscribed else "🔕"
 
 
 def shorten_group_name_for_button(name: str) -> str:
