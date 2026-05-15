@@ -588,6 +588,43 @@ def get_cities_for_country(country: str) -> List[str]:
     return sorted({g["city"] for g in LIVE_GROUPS if g["country"] == country}, key=city_sort_key)
 
 
+def compact_address_hint(address: str, max_len: int = 42) -> str:
+    text = re.sub(r"<[^>]+>", " ", str(address or ""))
+    text = re.sub(r"\s+", " ", text).strip(" .;,")
+    if not text:
+        return "адрес не указан"
+
+    metro = re.search(r"(?:^|[\s,;(])(?:м\.|метро)\s*([А-ЯЁA-Z0-9][^,;.()]{1,32})", text, flags=re.IGNORECASE)
+    if metro:
+        station = metro.group(1).strip(" .;,-")
+        hint = f"м. {station}"
+        return hint[:max_len].rstrip(" .,;-")
+
+    street_markers = (
+        "ул", "улица", "просп", "пр-т", "проспект", "пер", "переулок",
+        "пл", "площад", "шоссе", "наб", "набереж", "бульв", "проезд",
+        "линия", "аллея", "тракт", "дорога", "д.", "дом"
+    )
+    parts = [p.strip(" .;,") for p in re.split(r"[,;]", text) if p.strip(" .;,")]
+    for part in parts:
+        lower = part.lower()
+        if any(marker in lower for marker in street_markers):
+            hint = part
+            break
+    else:
+        hint = parts[0] if parts else text
+
+    if len(hint) > max_len:
+        hint = hint[:max_len].rsplit(" ", 1)[0] or hint[:max_len]
+    return hint.rstrip(" .,;-")
+
+
+def live_subscription_button_text(prefix: str, group: dict) -> str:
+    name = group.get("name", "")
+    hint = compact_address_hint(group.get("address", ""))
+    return f"{prefix} {name} · {hint}"
+
+
 def make_short_id(prefix: str, name: str) -> str:
     return prefix + hashlib.md5(name.encode("utf-8")).hexdigest()[:10]
 
@@ -994,7 +1031,6 @@ def build_live_root_keyboard(user_data: Optional[dict] = None) -> InlineKeyboard
             callback_data="livemycity",
         ))
     builder.row(InlineKeyboardButton(text="🌍 Выбрать страну", callback_data="livechoosecountry"))
-    builder.row(InlineKeyboardButton(text="📍 Найти город", callback_data="livesearchcity"))
     builder.row(InlineKeyboardButton(text="🔎 Найти группу или город", callback_data="searchgroup"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
@@ -1015,7 +1051,6 @@ def build_live_country_keyboard(prefix: str = "livecountry", back_callback: str 
     for country in get_countries_with_live_groups():
         builder.button(text=country, callback_data=f"{prefix}{COUNTRY_TO_ID[country]}")
     builder.adjust(2)
-    builder.row(InlineKeyboardButton(text="📍 Найти город", callback_data="livesearchcity"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu" if back_callback == "modelive" else back_callback))
     return builder.as_markup()
 
@@ -1076,7 +1111,6 @@ def build_live_city_keyboard(country: str, page: int = 0) -> InlineKeyboardMarku
     page, _ = add_city_page_buttons(builder, "livecity", country, page)
     add_city_pagination_buttons(builder, country, page, "livecountry")
     builder.row(InlineKeyboardButton(text="← К странам", callback_data="livechoosecountry"))
-    builder.row(InlineKeyboardButton(text="📍 Найти город", callback_data="livesearchcity"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
@@ -1534,17 +1568,22 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str, country
     builder = InlineKeyboardBuilder()
     all_prefix = "🔔" if user_data.get("all_live") else "🔕"
     builder.row(InlineKeyboardButton(text=f"{all_prefix} Все живые в этом городе", callback_data="subtoggleliveall"))
-    group_names = sorted({g["name"] for g in get_live_groups_for_city(city, country)}, key=str.lower)
-    if not group_names:
+    city_groups = sorted(get_live_groups_for_city(city, country), key=lambda g: (g.get("name", "").lower(), compact_address_hint(g.get("address", "")).lower()))
+    if not city_groups:
         builder.row(InlineKeyboardButton(text="🏙 Сменить город", callback_data="sublivecitychange"))
         builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
         builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
         await send_or_edit(target, f"🏙 <b>{escape_html(city)}</b>\n\nЖивые группы не найдены.", parse_mode=HTML_MODE, reply_markup=builder.as_markup())
         return
-    for name in group_names:
+    seen_names = set()
+    for group in city_groups:
+        name = group.get("name", "")
+        if name in seen_names:
+            continue
+        seen_names.add(name)
         gid = make_short_id("l", name)
         prefix = "🔔" if is_user_subscribed_to_live(user_data, name) else "🔕"
-        builder.row(InlineKeyboardButton(text=f"{prefix} {name}", callback_data=f"subtogglelive{gid}"))
+        builder.row(InlineKeyboardButton(text=live_subscription_button_text(prefix, group), callback_data=f"subtogglelive{gid}"))
     builder.row(InlineKeyboardButton(text="🏙 Сменить город", callback_data="sublivecitychange"))
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
