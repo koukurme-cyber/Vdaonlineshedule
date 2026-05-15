@@ -267,11 +267,10 @@ REPLY_MAIN_MENU = ReplyKeyboardMarkup(
             KeyboardButton(text="🏙 Живые встречи"),
         ],
         [
-            KeyboardButton(text="🔔 Мои подписки"),
-            KeyboardButton(text="Настройки подписок"),
+            KeyboardButton(text="🔔 Подписки"),
+            KeyboardButton(text="🔎 Найти группу или город"),
         ],
         [
-            KeyboardButton(text="🔎 Найти группу или город"),
             KeyboardButton(text="Контакты"),
         ],
     ],
@@ -841,6 +840,22 @@ def format_live_search_line(group: dict, include_city: bool = True, indent: bool
     return f"{prefix} <b>{escape_html(group['name'])}</b>{city_part}; {days_text}"
 
 
+
+def plural_ru(number: int, one: str, few: str, many: str) -> str:
+    number_abs = abs(int(number))
+    if 11 <= number_abs % 100 <= 14:
+        return many
+    last = number_abs % 10
+    if last == 1:
+        return one
+    if 2 <= last <= 4:
+        return few
+    return many
+
+
+def group_count_text(count: int) -> str:
+    return f"{count} {plural_ru(count, 'группа', 'группы', 'групп')}"
+
 def format_search_results(query: str) -> str:
     city_matches = get_searchable_cities(query)
     online_matches = collect_online_group_matches(query)
@@ -855,14 +870,15 @@ def format_search_results(query: str) -> str:
         for country, city in sorted(city_matches, key=lambda x: (x[0] != "Россия", x[0].lower(), city_sort_key(x[1])))[:10]:
             groups = get_live_groups_for_city(city, country)
             count = len(groups)
-            count_text = f" — {count} групп" if count else ""
+            count_text = f" — {group_count_text(count)}" if count else ""
             lines.append(f"• <b>{escape_html(get_country_city_label(country, city))}</b>{escape_html(count_text)}")
             for group in sorted(groups, key=lambda g: g.get("name", "").lower())[:5]:
                 lines.append(format_live_search_line(group, include_city=False, indent=True))
             if count > 5:
                 lines.append(f"  Показаны первые 5. Полный список — кнопкой ниже.")
         if len(city_matches) > 10:
-            lines.append(f"…и ещё {len(city_matches) - 10} городов. Уточните запрос.")
+            extra_cities = len(city_matches) - 10
+            lines.append(f"…и ещё {extra_cities} {plural_ru(extra_cities, 'город', 'города', 'городов')}. Уточните запрос.")
 
     if online_matches:
         lines.append("\n🌐 <b>Онлайн</b>")
@@ -874,14 +890,16 @@ def format_search_results(query: str) -> str:
             extra = "…" if len(occurrences) > 10 else ""
             lines.append(f'• <a href="{url}">{escape_html(name)}</a> — {escape_html(", ".join(parts) + extra)}')
         if len(online_matches) > 20:
-            lines.append(f"…и ещё {len(online_matches) - 20} онлайн-групп.")
+            extra_online = len(online_matches) - 20
+            lines.append(f"…и ещё {extra_online} онлайн-{plural_ru(extra_online, 'группа', 'группы', 'групп')}.")
 
     if live_matches:
         lines.append("\n🏙 <b>Живые</b>")
         for group in live_matches[:20]:
             lines.append(format_live_search_line(group, include_city=True, indent=False))
         if len(live_matches) > 20:
-            lines.append(f"…и ещё {len(live_matches) - 20} живых групп. Уточните запрос.")
+            extra_live = len(live_matches) - 20
+            lines.append(f"…и ещё {extra_live} {plural_ru(extra_live, 'живая группа', 'живые группы', 'живых групп')}. Уточните запрос.")
 
     return "\n".join(lines)
 
@@ -974,13 +992,10 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🏙 Живые встречи", callback_data="mainlive"),
     )
     builder.row(
-        InlineKeyboardButton(text="🔔 Мои подписки", callback_data="mainmygroups"),
-        InlineKeyboardButton(text="Настройки подписок", callback_data="settingsroot"),
-    )
-    builder.row(
+        InlineKeyboardButton(text="🔔 Подписки", callback_data="mainsub"),
         InlineKeyboardButton(text="🔎 Найти группу или город", callback_data="searchgroup"),
-        InlineKeyboardButton(text="Контакты", callback_data="maincontacts"),
     )
+    builder.row(InlineKeyboardButton(text="Контакты", callback_data="maincontacts"))
     return builder.as_markup()
 
 
@@ -1123,7 +1138,6 @@ def live_period_keyboard(city: str, country: Optional[str] = None) -> InlineKeyb
         InlineKeyboardButton(text="📋 Вся неделя", callback_data=f"liveweek{cid}"),
     )
     builder.row(InlineKeyboardButton(text="📆 Выбрать день", callback_data=f"livechooseday{cid}"))
-    builder.row(InlineKeyboardButton(text="🔔 Подписки по городу", callback_data=f"sublivecity{cid}"))
     builder.row(InlineKeyboardButton(text="← К городам", callback_data=f"livecountry{COUNTRY_TO_ID[country]}" if country in COUNTRY_TO_ID else "livechoosecountry"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
@@ -1144,6 +1158,7 @@ def build_subscriptions_menu() -> InlineKeyboardMarkup:
     builder.row(InlineKeyboardButton(text="Мои подписки", callback_data="mainmygroups"))
     builder.row(InlineKeyboardButton(text="Выбрать онлайн-группы", callback_data="subonline"))
     builder.row(InlineKeyboardButton(text="Выбрать живые группы", callback_data="sublive"))
+    builder.row(InlineKeyboardButton(text="Настройки подписок", callback_data="settingsroot"))
     builder.row(InlineKeyboardButton(text="🔕 Отписаться от всего", callback_data="mainunsubscribe"))
     builder.row(InlineKeyboardButton(text="← Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
@@ -1166,6 +1181,7 @@ def build_settings_root_menu() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🌐 Онлайн", callback_data="subsettingsonline"),
         InlineKeyboardButton(text="🏙 Живые", callback_data="subsettingslive"),
     )
+    builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
@@ -1518,7 +1534,7 @@ async def notifications_worker(bot: Bot):
 async def show_sub_main(target: CallbackQuery | Message):
     text = (
         "🔔 <b>Подписки</b>\n\n"
-        "Здесь можно выбрать группы и настроить уведомления."
+        "Здесь можно выбрать группы, посмотреть свои подписки и настроить уведомления."
     )
     await send_or_edit(target, text, parse_mode=HTML_MODE, reply_markup=build_subscriptions_menu())
 
@@ -2003,7 +2019,7 @@ async def online_today(callback: CallbackQuery):
     day_index = moscow_now().weekday()
     groups = get_online_by_day(day_index)
     text = f"{format_day_header(DAYS[day_index])}\n{ONLINE_TIME_NOTE}\n\n"
-    text += "\n".join(format_online_group_with_sub(t, n, u, user_data) for t, n, u in groups) if groups else "Нет групп."
+    text += "\n".join(format_online_group(t, n, u) for t, n, u in groups) if groups else "Нет групп."
     await send_or_edit(callback, text, parse_mode=HTML_MODE, disable_web_page_preview=True, reply_markup=back_markup("← К онлайн", "mainonline"))
 
 
@@ -2030,7 +2046,7 @@ async def online_show_day(callback: CallbackQuery):
     user_data = get_user_sub(str(callback.from_user.id))
     groups = get_online_by_day(day_index)
     text = f"{format_day_header(DAYS[day_index])}\n{ONLINE_TIME_NOTE}\n\n"
-    text += "\n".join(format_online_group_with_sub(t, n, u, user_data) for t, n, u in groups) if groups else "Нет групп."
+    text += "\n".join(format_online_group(t, n, u) for t, n, u in groups) if groups else "Нет групп."
     await send_or_edit(callback, text, parse_mode=HTML_MODE, disable_web_page_preview=True, reply_markup=back_markup("← К дням", "onlinechooseday"))
 
 
@@ -2079,7 +2095,7 @@ async def live_today(callback: CallbackQuery):
     day_index = moscow_now().weekday()
     groups = get_live_groups_for_day(city, day_index, country)
     text = f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>\n\n{format_day_header(DAYS[day_index])}\n\n"
-    text += "\n".join(format_live_group_with_sub(n, a, s, e, w, user_data) for n, a, s, e, w in groups) if groups else "Нет групп."
+    text += "\n".join(format_live_group(n, a, s, e, w) for n, a, s, e, w in groups) if groups else "Нет групп."
     await send_or_edit(callback, text, parse_mode=HTML_MODE, reply_markup=back_markup("← К городу", f"liveperiod{cid}"))
 
 
@@ -2124,7 +2140,7 @@ async def live_show_day(callback: CallbackQuery):
     user_data = get_user_sub(str(callback.from_user.id))
     groups = get_live_groups_for_day(city, day_index, country)
     text = f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>\n\n{format_day_header(DAYS[day_index])}\n\n"
-    text += "\n".join(format_live_group_with_sub(n, a, s, e, w, user_data) for n, a, s, e, w in groups) if groups else "Нет групп."
+    text += "\n".join(format_live_group(n, a, s, e, w) for n, a, s, e, w in groups) if groups else "Нет групп."
     await send_or_edit(callback, text, parse_mode=HTML_MODE, reply_markup=back_markup("← К дням", f"livechooseday{cid}"))
 
 
@@ -2145,6 +2161,7 @@ async def btn_subscriptions(message: Message):
     await show_sub_main(message)
 
 
+# Совместимость со старыми клавиатурами: раньше эта кнопка была на первом экране.
 @DP.message(F.text == "🔔 Мои подписки")
 @DP.message(F.text == "⭐ Мои группы")
 async def btn_my_groups(message: Message):
