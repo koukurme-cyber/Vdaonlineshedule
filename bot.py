@@ -759,6 +759,14 @@ def format_online_subscription_info(name: str, user_data: dict) -> str:
     return "\n".join(lines)
 
 
+def online_subscription_info_keyboard(gid: str, subscribed: bool) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    text = "Отключить подписку" if subscribed else "Включить подписку"
+    builder.row(InlineKeyboardButton(text=text, callback_data=f"subonlineinfotoggle{gid}"))
+    builder.row(InlineKeyboardButton(text="← К онлайн-группам", callback_data="subonlineinfoback"))
+    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
+    return builder.as_markup()
+
 
 def find_live_group_by_gid_for_user(gid: str, user_data: dict) -> Optional[dict]:
     group_name = LIVE_GROUP_ID_TO_NAME.get(gid)
@@ -792,6 +800,14 @@ def format_live_subscription_info(group: dict, user_data: dict) -> str:
         f"Подписка: <b>{status}</b>"
     )
 
+
+def live_subscription_info_keyboard(gid: str, subscribed: bool) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    text = "Отключить подписку" if subscribed else "Включить подписку"
+    builder.row(InlineKeyboardButton(text=text, callback_data=f"subliveinfotoggle{gid}"))
+    builder.row(InlineKeyboardButton(text="← К списку групп", callback_data="subliveinfoback"))
+    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
+    return builder.as_markup()
 
 
 def make_short_id(prefix: str, name: str) -> str:
@@ -1743,50 +1759,6 @@ def page_slice(items: list, page: int, page_size: int = SUBSCRIPTION_PAGE_SIZE):
     end = start + page_size
     return page, items[start:end], max(1, (len(items) + page_size - 1) // page_size)
 
-
-def normalize_expanded_id(raw: Optional[str]) -> str:
-    raw = str(raw or "").strip()
-    if raw in {"", "-", "none", "None", "null"}:
-        return ""
-    # callback ids are short hashes without colon; reject unexpected payloads
-    if ":" in raw or len(raw) > 16:
-        return ""
-    return raw
-
-
-def encode_expanded_id(value: Optional[str]) -> str:
-    value = normalize_expanded_id(value)
-    return value if value else "-"
-
-
-def online_group_details_block(name: str, user_data: dict) -> List[str]:
-    occurrences = collect_online_occurrences_for_group(name)
-    url = occurrences[0][2] if occurrences else ONLINE_GROUP_INFO.get(name, {}).get("url", "")
-    status = "включена" if is_user_subscribed_to_online(user_data, name) else "выключена"
-    lines = [
-        f"Расписание: {escape_html(format_online_full_schedule(name))}",
-        f"Время: {escape_html(ONLINE_TIME_NOTE.lower())}",
-    ]
-    if url:
-        lines.append(f'Ссылка: <a href="{url}">перейти</a>')
-    lines.append(f"Подписка: <b>{status}</b>")
-    return lines
-
-
-def live_group_details_block(group: dict, user_data: dict) -> List[str]:
-    name = group.get("name", "")
-    country = group.get("country")
-    city = group.get("city", "")
-    address = group.get("address", "")
-    schedule = format_group_days_for_search(group, limit=30)
-    status = "включена" if is_user_subscribed_to_live(user_data, name) else "выключена"
-    return [
-        f"Расписание: {escape_html(schedule)}",
-        f"Адрес: {escape_html(address) if address else 'не указан'}",
-        f"Город: <b>{escape_html(get_country_city_label(country, city))}</b>",
-        f"Подписка: <b>{status}</b>",
-    ]
-
 async def show_sub_main(target: CallbackQuery | Message):
     text = (
         "🔔 <b>Подписки</b>\n\n"
@@ -1795,7 +1767,7 @@ async def show_sub_main(target: CallbackQuery | Message):
     await send_or_edit(target, text, parse_mode=HTML_MODE, reply_markup=build_subscriptions_menu())
 
 
-async def show_sub_online_list(target: CallbackQuery | Message, page: int = 0, expanded_raw: str = ""):
+async def show_sub_online_list(target: CallbackQuery | Message, page: int = 0):
     user_data = get_user_sub(str(target.from_user.id))
     builder = InlineKeyboardBuilder()
     all_prefix = "🔔" if user_data.get("all_online") else "🔕"
@@ -1803,43 +1775,38 @@ async def show_sub_online_list(target: CallbackQuery | Message, page: int = 0, e
 
     online_items = sorted(ONLINE_GROUP_ID_TO_NAME.items(), key=lambda x: x[1].lower())
     page, visible_items, total_pages = page_slice(online_items, page)
-    expanded_id = normalize_expanded_id(expanded_raw)
-    expanded_arg = encode_expanded_id(expanded_id)
 
     lines = [
         "🌐 <b>Онлайн-группы</b>",
         "",
+        "На экране показаны расписание и кнопки подписки. Название открывает подробности.",
+        "🔔 — включено, 🔕 — выключено",
+        "",
         escape_html(ONLINE_TIME_NOTE),
-        "🔔 — подписка включена, 🔕 — выключена",
         "",
     ]
     if total_pages > 1:
         lines.append(f"Страница {page + 1} из {total_pages}")
         lines.append("")
 
-    for gid, name in visible_items:
-        expanded = gid == expanded_id
+    for local_idx, (gid, name) in enumerate(visible_items, start=1):
         subscribed = is_user_subscribed_to_online(user_data, name)
+        prefix = "🔔" if subscribed else "🔕"
         schedule = compact_online_schedule_for_button(name, max_len=120)
-        lines.append(f"<b>{escape_html(name)}</b>")
+        lines.append(f"<b>{local_idx}. {escape_html(name)}</b>")
         lines.append(f"🕒 {escape_html(schedule)}")
-        if expanded:
-            lines.append("")
-            lines.extend(online_group_details_block(name, user_data))
         lines.append("")
-        details_text = "Скрыть ▴" if expanded else "Подробнее ▾"
-        sub_text = "🔔 Подписка" if subscribed else "🔕 Подписка"
         builder.row(
-            InlineKeyboardButton(text=details_text, callback_data=f"subonlineexpand:{page}:{gid}:{expanded_arg}"),
-            InlineKeyboardButton(text=sub_text, callback_data=f"subonlinepagetoggle:{page}:{gid}:{expanded_arg}"),
+            InlineKeyboardButton(text=f"{local_idx}. {trim_button_text(name, 42)}", callback_data=f"subonlineinfo{gid}"),
+            InlineKeyboardButton(text=prefix, callback_data=f"subonlinepagetoggle:{page}:{gid}"),
         )
 
     if total_pages > 1:
         nav = []
         if page > 0:
-            nav.append(InlineKeyboardButton(text="← Предыдущие", callback_data=f"subonlinepage:{page - 1}:{expanded_arg}"))
+            nav.append(InlineKeyboardButton(text="← Предыдущие", callback_data=f"subonlinepage{page - 1}"))
         if page < total_pages - 1:
-            nav.append(InlineKeyboardButton(text="Следующие →", callback_data=f"subonlinepage:{page + 1}:{expanded_arg}"))
+            nav.append(InlineKeyboardButton(text="Следующие →", callback_data=f"subonlinepage{page + 1}"))
         if nav:
             builder.row(*nav)
 
@@ -1848,7 +1815,7 @@ async def show_sub_online_list(target: CallbackQuery | Message, page: int = 0, e
     await send_long_text(
         target,
         None,
-        "\n".join(lines).strip(),
+        "\n".join(lines),
         final_markup=builder.as_markup(),
         parse_mode=HTML_MODE,
         disable_web_page_preview=True,
@@ -1876,7 +1843,7 @@ async def show_sub_live_city_selector(target: CallbackQuery | Message, country: 
     await send_or_edit(target, city_page_title(country, page, total), parse_mode=HTML_MODE, reply_markup=builder.as_markup())
 
 
-async def show_sub_live_list(target: CallbackQuery | Message, city: str, country: Optional[str] = None, page: int = 0, expanded_raw: str = ""):
+async def show_sub_live_list(target: CallbackQuery | Message, city: str, country: Optional[str] = None, page: int = 0):
     user_data = get_user_sub(str(target.from_user.id))
     builder = InlineKeyboardBuilder()
     all_prefix = "🔔" if user_data.get("all_live") else "🔕"
@@ -1899,47 +1866,40 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str, country
         visible_groups_all.append(group)
 
     page, visible_groups, total_pages = page_slice(visible_groups_all, page)
-    expanded_id = normalize_expanded_id(expanded_raw)
-    expanded_arg = encode_expanded_id(expanded_id)
 
     lines = [
         f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>",
         "",
-        "🔔 — подписка включена, 🔕 — выключена",
+        "На экране показаны время, ориентир и кнопки подписки. Название открывает подробности.",
+        "🔔 — включено, 🔕 — выключено",
         "",
     ]
     if total_pages > 1:
         lines.append(f"Страница {page + 1} из {total_pages}")
         lines.append("")
 
-    for group in visible_groups:
+    for local_idx, group in enumerate(visible_groups, start=1):
         name = group.get("name", "")
         gid = make_short_id("l", name)
-        expanded = gid == expanded_id
-        subscribed = is_user_subscribed_to_live(user_data, name)
-        schedule = compact_live_schedule_for_button(group, max_len=120)
-        hint = compact_address_hint(group.get("address", ""), max_len=120)
-        lines.append(f"<b>{escape_html(name)}</b>")
+        prefix = "🔔" if is_user_subscribed_to_live(user_data, name) else "🔕"
+        schedule = compact_live_schedule_for_button(group, max_len=80)
+        hint = compact_address_hint(group.get("address", ""), max_len=80)
+        lines.append(f"<b>{local_idx}. {escape_html(name)}</b>")
         lines.append(f"🕒 {escape_html(schedule)}")
         if hint:
             lines.append(f"📍 {escape_html(hint)}")
-        if expanded:
-            lines.append("")
-            lines.extend(live_group_details_block(group, user_data))
         lines.append("")
-        details_text = "Скрыть ▴" if expanded else "Подробнее ▾"
-        sub_text = "🔔 Подписка" if subscribed else "🔕 Подписка"
         builder.row(
-            InlineKeyboardButton(text=details_text, callback_data=f"subliveexpand:{page}:{gid}:{expanded_arg}"),
-            InlineKeyboardButton(text=sub_text, callback_data=f"sublivepagetoggle:{page}:{gid}:{expanded_arg}"),
+            InlineKeyboardButton(text=f"{local_idx}. {trim_button_text(name, 42)}", callback_data=f"subliveinfo{gid}"),
+            InlineKeyboardButton(text=prefix, callback_data=f"sublivepagetoggle:{page}:{gid}"),
         )
 
     if total_pages > 1:
         nav = []
         if page > 0:
-            nav.append(InlineKeyboardButton(text="← Предыдущие", callback_data=f"sublivepage:{page - 1}:{expanded_arg}"))
+            nav.append(InlineKeyboardButton(text="← Предыдущие", callback_data=f"sublivepage{page - 1}"))
         if page < total_pages - 1:
-            nav.append(InlineKeyboardButton(text="Следующие →", callback_data=f"sublivepage:{page + 1}:{expanded_arg}"))
+            nav.append(InlineKeyboardButton(text="Следующие →", callback_data=f"sublivepage{page + 1}"))
         if nav:
             builder.row(*nav)
 
@@ -1949,7 +1909,7 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str, country
     await send_long_text(
         target,
         None,
-        "\n".join(lines).strip(),
+        "\n".join(lines),
         final_markup=builder.as_markup(),
         parse_mode=HTML_MODE,
     )
@@ -2234,46 +2194,23 @@ async def sub_live_city_selected(callback: CallbackQuery):
 
 
 
-@DP.callback_query(F.data.startswith("subonlinepage:"))
+@DP.callback_query(F.data.startswith("subonlinepage"))
 async def sub_online_page(callback: CallbackQuery):
-    parts = callback.data.split(":", 2)
+    raw = callback.data[len("subonlinepage"):]
     try:
-        page = int(parts[1])
+        page = int(raw)
     except Exception:
         page = 0
-    expanded_raw = parts[2] if len(parts) > 2 else ""
-    await show_sub_online_list(callback, page, expanded_raw)
-
-
-@DP.callback_query(F.data.startswith("subonlineexpand:"))
-async def sub_online_expand(callback: CallbackQuery):
-    parts = callback.data.split(":", 3)
-    if len(parts) < 3:
-        await safe_callback_answer(callback, "Ошибка")
-        return
-    try:
-        page = int(parts[1])
-    except Exception:
-        page = 0
-    gid = parts[2]
-    expanded_raw = parts[3] if len(parts) > 3 else ""
-    current = normalize_expanded_id(expanded_raw)
-    new_expanded = "" if current == gid else gid
-    await show_sub_online_list(callback, page, new_expanded)
+    await show_sub_online_list(callback, page)
 
 
 @DP.callback_query(F.data.startswith("subonlinepagetoggle:"))
 async def sub_online_page_toggle(callback: CallbackQuery):
-    parts = callback.data.split(":", 3)
-    if len(parts) < 3:
-        await safe_callback_answer(callback, "Ошибка")
-        return
+    _, page_raw, gid = callback.data.split(":", 2)
     try:
-        page = int(parts[1])
+        page = int(page_raw)
     except Exception:
         page = 0
-    gid = parts[2]
-    expanded_raw = parts[3] if len(parts) > 3 else ""
     group_name = ONLINE_GROUP_ID_TO_NAME.get(gid)
     if not group_name:
         await safe_callback_answer(callback, "Ошибка ID")
@@ -2288,70 +2225,31 @@ async def sub_online_page_toggle(callback: CallbackQuery):
         user_data["all_online"] = False
     set_user_sub(uid, user_data)
     await safe_callback_answer(callback, "Готово")
-    await show_sub_online_list(callback, page, expanded_raw)
+    await show_sub_online_list(callback, page)
 
 
-# Совместимость со старыми callback-кнопками, если они остались в открытом сообщении Telegram.
-@DP.callback_query(F.data.startswith("subonlinepage"))
-async def sub_online_page_legacy(callback: CallbackQuery):
-    raw = callback.data[len("subonlinepage"):]
+@DP.callback_query(F.data.startswith("sublivepage"))
+async def sub_live_page(callback: CallbackQuery):
+    raw = callback.data[len("sublivepage"):]
     try:
         page = int(raw)
     except Exception:
         page = 0
-    await show_sub_online_list(callback, page)
-
-
-@DP.callback_query(F.data.startswith("sublivepage:"))
-async def sub_live_page(callback: CallbackQuery):
-    parts = callback.data.split(":", 2)
-    try:
-        page = int(parts[1])
-    except Exception:
-        page = 0
-    expanded_raw = parts[2] if len(parts) > 2 else ""
     user_data = get_user_sub(str(callback.from_user.id))
     city = user_data.get("city")
     if city:
-        await show_sub_live_list(callback, city, user_data.get("country"), page, expanded_raw)
-    else:
-        await show_sub_live_country_selector(callback)
-
-
-@DP.callback_query(F.data.startswith("subliveexpand:"))
-async def sub_live_expand(callback: CallbackQuery):
-    parts = callback.data.split(":", 3)
-    if len(parts) < 3:
-        await safe_callback_answer(callback, "Ошибка")
-        return
-    try:
-        page = int(parts[1])
-    except Exception:
-        page = 0
-    gid = parts[2]
-    expanded_raw = parts[3] if len(parts) > 3 else ""
-    current = normalize_expanded_id(expanded_raw)
-    new_expanded = "" if current == gid else gid
-    user_data = get_user_sub(str(callback.from_user.id))
-    city = user_data.get("city")
-    if city:
-        await show_sub_live_list(callback, city, user_data.get("country"), page, new_expanded)
+        await show_sub_live_list(callback, city, user_data.get("country"), page)
     else:
         await show_sub_live_country_selector(callback)
 
 
 @DP.callback_query(F.data.startswith("sublivepagetoggle:"))
 async def sub_live_page_toggle(callback: CallbackQuery):
-    parts = callback.data.split(":", 3)
-    if len(parts) < 3:
-        await safe_callback_answer(callback, "Ошибка")
-        return
+    _, page_raw, gid = callback.data.split(":", 2)
     try:
-        page = int(parts[1])
+        page = int(page_raw)
     except Exception:
         page = 0
-    gid = parts[2]
-    expanded_raw = parts[3] if len(parts) > 3 else ""
     group_name = LIVE_GROUP_ID_TO_NAME.get(gid)
     if not group_name:
         await safe_callback_answer(callback, "Ошибка ID")
@@ -2369,25 +2267,148 @@ async def sub_live_page_toggle(callback: CallbackQuery):
     user_data = get_user_sub(uid)
     city = user_data.get("city")
     if city:
-        await show_sub_live_list(callback, city, user_data.get("country"), page, expanded_raw)
-    else:
-        await show_sub_live_country_selector(callback)
-
-
-# Совместимость со старыми callback-кнопками.
-@DP.callback_query(F.data.startswith("sublivepage"))
-async def sub_live_page_legacy(callback: CallbackQuery):
-    raw = callback.data[len("sublivepage"):]
-    try:
-        page = int(raw)
-    except Exception:
-        page = 0
-    user_data = get_user_sub(str(callback.from_user.id))
-    city = user_data.get("city")
-    if city:
         await show_sub_live_list(callback, city, user_data.get("country"), page)
     else:
         await show_sub_live_country_selector(callback)
+
+@DP.callback_query(F.data == "subtoggleonlineall")
+async def sub_toggle_online_all(callback: CallbackQuery):
+    uid = str(callback.from_user.id)
+    user_data = get_user_sub(uid)
+    user_data["all_online"] = not user_data.get("all_online", False)
+    if user_data["all_online"]:
+        user_data["groups"] = {k: v for k, v in user_data["groups"].items() if v.get("type") != "online"}
+    set_user_sub(uid, user_data)
+    await safe_callback_answer(callback, "Готово")
+    await show_sub_online_list(callback)
+
+
+@DP.callback_query(F.data.startswith("subtoggleonline"))
+async def sub_toggle_online(callback: CallbackQuery):
+    gid = callback.data[len("subtoggleonline"):]
+    group_name = ONLINE_GROUP_ID_TO_NAME.get(gid)
+    if not group_name:
+        await safe_callback_answer(callback, "Ошибка ID")
+        return
+    uid = str(callback.from_user.id)
+    user_data = get_user_sub(uid)
+    groups = user_data.setdefault("groups", {})
+
+    if group_name in groups and groups[group_name].get("type") == "online":
+        del groups[group_name]
+    else:
+        groups[group_name] = {"type": "online", "info": ONLINE_GROUP_INFO.get(group_name, {})}
+        user_data["all_online"] = False
+    set_user_sub(uid, user_data)
+    await safe_callback_answer(callback, "Готово")
+    await show_sub_online_list(callback)
+
+
+@DP.callback_query(F.data == "subonlineinfoback")
+async def sub_online_info_back(callback: CallbackQuery):
+    await show_sub_online_list(callback)
+
+
+@DP.callback_query(F.data.startswith("subonlineinfotoggle"))
+async def sub_online_info_toggle(callback: CallbackQuery):
+    gid = callback.data[len("subonlineinfotoggle"):]
+    group_name = ONLINE_GROUP_ID_TO_NAME.get(gid)
+    if not group_name:
+        await safe_callback_answer(callback, "Ошибка ID")
+        return
+    uid = str(callback.from_user.id)
+    user_data = get_user_sub(uid)
+    groups = user_data.setdefault("groups", {})
+    if group_name in groups and groups[group_name].get("type") == "online":
+        del groups[group_name]
+    else:
+        groups[group_name] = {"type": "online", "info": ONLINE_GROUP_INFO.get(group_name, {})}
+        user_data["all_online"] = False
+    set_user_sub(uid, user_data)
+    user_data = get_user_sub(uid)
+    subscribed = is_user_subscribed_to_online(user_data, group_name)
+    await send_or_edit(
+        callback,
+        format_online_subscription_info(group_name, user_data),
+        parse_mode=HTML_MODE,
+        disable_web_page_preview=True,
+        reply_markup=online_subscription_info_keyboard(gid, subscribed),
+    )
+
+
+@DP.callback_query(F.data.startswith("subonlineinfo"))
+async def sub_online_info(callback: CallbackQuery):
+    gid = callback.data[len("subonlineinfo"):]
+    group_name = ONLINE_GROUP_ID_TO_NAME.get(gid)
+    if not group_name:
+        await safe_callback_answer(callback, "Ошибка ID")
+        return
+    user_data = get_user_sub(str(callback.from_user.id))
+    subscribed = is_user_subscribed_to_online(user_data, group_name)
+    await send_or_edit(
+        callback,
+        format_online_subscription_info(group_name, user_data),
+        parse_mode=HTML_MODE,
+        disable_web_page_preview=True,
+        reply_markup=online_subscription_info_keyboard(gid, subscribed),
+    )
+
+
+@DP.callback_query(F.data == "subliveinfoback")
+async def sub_live_info_back(callback: CallbackQuery):
+    user_data = get_user_sub(str(callback.from_user.id))
+    city = user_data.get("city")
+    if city:
+        await show_sub_live_list(callback, city, user_data.get("country"))
+    else:
+        await show_sub_live_country_selector(callback)
+
+
+@DP.callback_query(F.data.startswith("subliveinfotoggle"))
+async def sub_live_info_toggle(callback: CallbackQuery):
+    gid = callback.data[len("subliveinfotoggle"):]
+    group_name = LIVE_GROUP_ID_TO_NAME.get(gid)
+    if not group_name:
+        await safe_callback_answer(callback, "Ошибка ID")
+        return
+    uid = str(callback.from_user.id)
+    user_data = get_user_sub(uid)
+    groups = user_data.setdefault("groups", {})
+    if group_name in groups and groups[group_name].get("type") == "live":
+        del groups[group_name]
+    else:
+        groups[group_name] = {"type": "live", "info": LIVE_GROUP_INFO.get(group_name, {})}
+        user_data["all_live"] = False
+    set_user_sub(uid, user_data)
+    user_data = get_user_sub(uid)
+    group = find_live_group_by_gid_for_user(gid, user_data)
+    if not group:
+        await safe_callback_answer(callback, "Ошибка ID")
+        return
+    subscribed = is_user_subscribed_to_live(user_data, group.get("name", ""))
+    await send_or_edit(
+        callback,
+        format_live_subscription_info(group, user_data),
+        parse_mode=HTML_MODE,
+        reply_markup=live_subscription_info_keyboard(gid, subscribed),
+    )
+
+
+@DP.callback_query(F.data.startswith("subliveinfo"))
+async def sub_live_info(callback: CallbackQuery):
+    gid = callback.data[len("subliveinfo"):]
+    user_data = get_user_sub(str(callback.from_user.id))
+    group = find_live_group_by_gid_for_user(gid, user_data)
+    if not group:
+        await safe_callback_answer(callback, "Ошибка ID")
+        return
+    subscribed = is_user_subscribed_to_live(user_data, group.get("name", ""))
+    await send_or_edit(
+        callback,
+        format_live_subscription_info(group, user_data),
+        parse_mode=HTML_MODE,
+        reply_markup=live_subscription_info_keyboard(gid, subscribed),
+    )
 
 
 @DP.callback_query(F.data == "subtoggleliveall")
