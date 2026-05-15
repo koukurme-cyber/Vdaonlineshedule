@@ -271,7 +271,7 @@ REPLY_MAIN_MENU = ReplyKeyboardMarkup(
             KeyboardButton(text="🔎 Найти группу или город"),
         ],
         [
-            KeyboardButton(text="Контакты"),
+            KeyboardButton(text="📩 Контакты"),
         ],
     ],
     resize_keyboard=True,
@@ -577,10 +577,23 @@ def get_countries_with_live_groups() -> List[str]:
     return sorted({g["country"] for g in LIVE_GROUPS}, key=lambda x: (x != "Россия", x.lower()))
 
 
-def city_sort_key(city: str) -> str:
+def normalize_city_for_sort(city: str) -> str:
     normalized = re.sub(r"^г\.?\s+", "", city.strip(), flags=re.IGNORECASE)
     normalized = re.sub(r"\s*\((СПб|Мск)\)\s*$", "", normalized, flags=re.IGNORECASE)
     return normalized.lower()
+
+
+def city_priority(city: str) -> int:
+    normalized = normalize_city_for_sort(city)
+    if normalized == "москва":
+        return 0
+    if normalized == "санкт-петербург":
+        return 1
+    return 2
+
+
+def city_sort_key(city: str) -> tuple:
+    return (city_priority(city), normalize_city_for_sort(city))
 
 
 def get_cities_for_country(country: str) -> List[str]:
@@ -620,8 +633,126 @@ def compact_address_hint(address: str, max_len: int = 42) -> str:
 
 def live_subscription_button_text(prefix: str, group: dict) -> str:
     name = group.get("name", "")
-    hint = compact_address_hint(group.get("address", ""))
-    return f"{prefix} {name} · {hint}"
+    return f"{prefix} {name}"
+
+
+def collect_online_occurrences_for_group(name: str) -> List[Tuple[int, str, str]]:
+    occurrences: List[Tuple[int, str, str]] = []
+    for day_index, day_groups in ONLINE_SCHEDULE.items():
+        for time_str, group_name, url in day_groups:
+            if group_name == name:
+                occurrences.append((day_index, time_str, url))
+    return sorted(occurrences, key=lambda x: (x[0], x[1]))
+
+
+def compact_online_schedule_for_button(name: str, max_len: int = 42) -> str:
+    occurrences = collect_online_occurrences_for_group(name)
+    if not occurrences:
+        return ""
+
+    by_time: Dict[str, List[int]] = {}
+    for day_index, time_str, _ in occurrences:
+        by_time.setdefault(time_str, []).append(day_index)
+
+    parts = []
+    for time_str, day_indexes in sorted(by_time.items(), key=lambda x: (x[0], x[1])):
+        days = sorted(set(day_indexes))
+        if days == list(range(7)):
+            parts.append(f"ежедневно {time_str}")
+        elif days == list(range(6)):
+            parts.append(f"Пн–Сб {time_str}")
+        elif days == [0, 1, 2, 3, 4]:
+            parts.append(f"Пн–Пт {time_str}")
+        else:
+            parts.extend(f"{DAY_SHORT[d]} {time_str}" for d in days if 0 <= d < len(DAY_SHORT))
+
+    text = ", ".join(parts)
+    if len(text) > max_len:
+        text = text[:max_len].rsplit(",", 1)[0].rstrip() or text[:max_len].rstrip()
+        text += "…"
+    return text
+
+
+def online_subscription_button_text(prefix: str, name: str) -> str:
+    schedule = compact_online_schedule_for_button(name)
+    if schedule:
+        return f"{prefix} {name} ({schedule})"
+    return f"{prefix} {name}"
+
+
+def format_online_full_schedule(name: str) -> str:
+    occurrences = collect_online_occurrences_for_group(name)
+    if not occurrences:
+        return "расписание не указано"
+    return ", ".join(f"{DAY_SHORT[d]} {time_str}" for d, time_str, _ in occurrences if 0 <= d < len(DAY_SHORT))
+
+
+def format_online_subscription_info(name: str, user_data: dict) -> str:
+    occurrences = collect_online_occurrences_for_group(name)
+    url = occurrences[0][2] if occurrences else ONLINE_GROUP_INFO.get(name, {}).get("url", "")
+    subscribed = is_user_subscribed_to_online(user_data, name)
+    status = "включена" if subscribed else "выключена"
+    lines = [
+        f"🌐 <b>{escape_html(name)}</b>",
+        "",
+        f"Расписание: {escape_html(format_online_full_schedule(name))}",
+        f"Время: {escape_html(ONLINE_TIME_NOTE.lower())}",
+    ]
+    if url:
+        lines.append(f'Ссылка: <a href="{url}">перейти</a>')
+    lines.extend(["", f"Подписка: <b>{status}</b>"])
+    return "\n".join(lines)
+
+
+def online_subscription_info_keyboard(gid: str, subscribed: bool) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    text = "Отключить подписку" if subscribed else "Включить подписку"
+    builder.row(InlineKeyboardButton(text=text, callback_data=f"subonlineinfotoggle{gid}"))
+    builder.row(InlineKeyboardButton(text="← К онлайн-группам", callback_data="subonlineinfoback"))
+    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
+    return builder.as_markup()
+
+
+def find_live_group_by_gid_for_user(gid: str, user_data: dict) -> Optional[dict]:
+    group_name = LIVE_GROUP_ID_TO_NAME.get(gid)
+    if not group_name:
+        return None
+    city = user_data.get("city")
+    country = user_data.get("country")
+    if city:
+        for group in get_live_groups_for_city(city, country):
+            if group.get("name") == group_name:
+                return group
+    for group in LIVE_GROUPS:
+        if group.get("name") == group_name:
+            return group
+    return None
+
+
+def format_live_subscription_info(group: dict, user_data: dict) -> str:
+    name = group.get("name", "")
+    country = group.get("country")
+    city = group.get("city", "")
+    address = group.get("address", "")
+    days = format_group_days_for_search(group, limit=30)
+    subscribed = is_user_subscribed_to_live(user_data, name)
+    status = "включена" if subscribed else "выключена"
+    return (
+        f"🏙 <b>{escape_html(name)}</b>\n\n"
+        f"Город: <b>{escape_html(get_country_city_label(country, city))}</b>\n"
+        f"Адрес: {escape_html(address) if address else 'не указан'}\n"
+        f"Расписание: {escape_html(days)}\n\n"
+        f"Подписка: <b>{status}</b>"
+    )
+
+
+def live_subscription_info_keyboard(gid: str, subscribed: bool) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    text = "Отключить подписку" if subscribed else "Включить подписку"
+    builder.row(InlineKeyboardButton(text=text, callback_data=f"subliveinfotoggle{gid}"))
+    builder.row(InlineKeyboardButton(text="← К списку групп", callback_data="subliveinfoback"))
+    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
+    return builder.as_markup()
 
 
 def make_short_id(prefix: str, name: str) -> str:
@@ -653,39 +784,39 @@ def normalize_city_name(city: str) -> str:
     return aliases.get(city.lower().strip(), city.lower().strip())
 
 
+def city_search_terms(query: str) -> List[str]:
+    q = normalize_search_query(query)
+    if q in {"мск", "msk"}:
+        return ["москва", "мск"]
+    if q in {"спб", "spb", "питер", "петербург"}:
+        return ["санкт петербург", "санкт-петербург", "спб", "питер", "петербург"]
+    return [q]
+
+
 def get_searchable_cities(query: str, country: Optional[str] = None) -> List[Tuple[str, str]]:
-    query_lower = query.lower().strip()
-    is_spb_search = query_lower in {"санкт-петербург", "спб", "питер", "петербург"}
-    matched: List[Tuple[str, str]] = []
-    seen = set()
+    query_terms = [t for t in city_search_terms(query) if t]
+    matched, seen = [], set()
     for group in LIVE_GROUPS:
         if country and group["country"] != country:
             continue
         group_country = group["country"]
         city = group["city"]
-        city_lower = city.lower()
-        country_lower = group_country.lower()
-        label_lower = f"{country_lower} {city_lower}"
-        if query_lower in city_lower or query_lower in label_lower:
-            if is_spb_search and any(suburb.lower() in city_lower and suburb.lower() != "санкт-петербург" for suburb in SPB_SUBURBS):
-                continue
+        city_text = normalize_search_query(city)
+        country_text = normalize_search_query(group_country)
+        label_text = f"{country_text} {city_text}"
+        aliases = []
+        city_norm = normalize_city_for_sort(city)
+        if city_norm == "москва" or "(мск)" in city.lower():
+            aliases.append("мск")
+        if city_norm == "санкт-петербург" or "(спб)" in city.lower():
+            aliases.extend(["спб", "питер", "петербург"])
+
+        if any(term in city_text or term in label_text or term in aliases for term in query_terms):
             key = (group_country, city)
             if key not in seen:
                 matched.append(key)
                 seen.add(key)
-    if not matched and not is_spb_search:
-        for group in LIVE_GROUPS:
-            if country and group["country"] != country:
-                continue
-            group_country = group["country"]
-            city = group["city"]
-            city_lower = city.lower()
-            if any(query_lower in suburb.lower() and query_lower in city_lower for suburb in SPB_SUBURBS):
-                key = (group_country, city)
-                if key not in seen:
-                    matched.append(key)
-                    seen.add(key)
-    return matched
+    return sorted(matched, key=lambda x: (x[0] != "Россия", x[0].lower(), city_sort_key(x[1])))
 
 
 def week_of_month(dt):
@@ -995,7 +1126,7 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🔔 Подписки", callback_data="mainsub"),
         InlineKeyboardButton(text="🔎 Найти группу или город", callback_data="searchgroup"),
     )
-    builder.row(InlineKeyboardButton(text="Контакты", callback_data="maincontacts"))
+    builder.row(InlineKeyboardButton(text="📩 Контакты", callback_data="maincontacts"))
     return builder.as_markup()
 
 
@@ -1014,7 +1145,7 @@ HELP_TEXT = (
     '🌐 Онлайн-встречи — расписание онлайн-групп по дням.\n'
     '🏙 Живые встречи — очные группы по стране, городу и дню недели.\n'
     '🔔 Мои подписки — выбранные группы, утреннее расписание и напоминания.\n'
-    '🔎 Найти группу или город — поиск по онлайн-группам, живым группам и городам.\nКонтакты — куда писать по вопросам актуализации информации о группах.\n\n'
+    '🔎 Найти группу или город — поиск по онлайн-группам, живым группам и городам.\n📩 Контакты — куда писать по вопросам актуализации информации о группах.\n\n'
     '<b>Команды</b>\n'
     '/start — открыть главное меню.\n'
     '/help — показать эту справку.\n'
@@ -1030,7 +1161,7 @@ def build_more_menu_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="💫 Фраза поддержки", callback_data="mainslogan"),
-        InlineKeyboardButton(text="Контакты", callback_data="maincontacts"),
+        InlineKeyboardButton(text="📩 Контакты", callback_data="maincontacts"),
     )
     builder.row(InlineKeyboardButton(text="Помощь", callback_data="mainhelp"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
@@ -1546,7 +1677,10 @@ async def show_sub_online_list(target: CallbackQuery | Message):
     builder.row(InlineKeyboardButton(text=f"{all_prefix} Все онлайн", callback_data="subtoggleonlineall"))
     for gid, name in sorted(ONLINE_GROUP_ID_TO_NAME.items(), key=lambda x: x[1].lower()):
         prefix = "🔔" if is_user_subscribed_to_online(user_data, name) else "🔕"
-        builder.row(InlineKeyboardButton(text=f"{prefix} {name}", callback_data=f"subtoggleonline{gid}"))
+        builder.row(
+            InlineKeyboardButton(text=online_subscription_button_text(prefix, name), callback_data=f"subtoggleonline{gid}"),
+            InlineKeyboardButton(text="Подробнее", callback_data=f"subonlineinfo{gid}"),
+        )
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     await send_or_edit(
@@ -1599,7 +1733,10 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str, country
         seen_names.add(name)
         gid = make_short_id("l", name)
         prefix = "🔔" if is_user_subscribed_to_live(user_data, name) else "🔕"
-        builder.row(InlineKeyboardButton(text=live_subscription_button_text(prefix, group), callback_data=f"subtogglelive{gid}"))
+        builder.row(
+            InlineKeyboardButton(text=live_subscription_button_text(prefix, group), callback_data=f"subtogglelive{gid}"),
+            InlineKeyboardButton(text="Подробнее", callback_data=f"subliveinfo{gid}"),
+        )
     builder.row(InlineKeyboardButton(text="🏙 Сменить город", callback_data="sublivecitychange"))
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
@@ -1923,6 +2060,113 @@ async def sub_toggle_online(callback: CallbackQuery):
     await show_sub_online_list(callback)
 
 
+@DP.callback_query(F.data == "subonlineinfoback")
+async def sub_online_info_back(callback: CallbackQuery):
+    await show_sub_online_list(callback)
+
+
+@DP.callback_query(F.data.startswith("subonlineinfotoggle"))
+async def sub_online_info_toggle(callback: CallbackQuery):
+    gid = callback.data[len("subonlineinfotoggle"):]
+    group_name = ONLINE_GROUP_ID_TO_NAME.get(gid)
+    if not group_name:
+        await safe_callback_answer(callback, "Ошибка ID")
+        return
+    uid = str(callback.from_user.id)
+    user_data = get_user_sub(uid)
+    groups = user_data.setdefault("groups", {})
+    if group_name in groups and groups[group_name].get("type") == "online":
+        del groups[group_name]
+    else:
+        groups[group_name] = {"type": "online", "info": ONLINE_GROUP_INFO.get(group_name, {})}
+        user_data["all_online"] = False
+    set_user_sub(uid, user_data)
+    user_data = get_user_sub(uid)
+    subscribed = is_user_subscribed_to_online(user_data, group_name)
+    await send_or_edit(
+        callback,
+        format_online_subscription_info(group_name, user_data),
+        parse_mode=HTML_MODE,
+        disable_web_page_preview=True,
+        reply_markup=online_subscription_info_keyboard(gid, subscribed),
+    )
+
+
+@DP.callback_query(F.data.startswith("subonlineinfo"))
+async def sub_online_info(callback: CallbackQuery):
+    gid = callback.data[len("subonlineinfo"):]
+    group_name = ONLINE_GROUP_ID_TO_NAME.get(gid)
+    if not group_name:
+        await safe_callback_answer(callback, "Ошибка ID")
+        return
+    user_data = get_user_sub(str(callback.from_user.id))
+    subscribed = is_user_subscribed_to_online(user_data, group_name)
+    await send_or_edit(
+        callback,
+        format_online_subscription_info(group_name, user_data),
+        parse_mode=HTML_MODE,
+        disable_web_page_preview=True,
+        reply_markup=online_subscription_info_keyboard(gid, subscribed),
+    )
+
+
+@DP.callback_query(F.data == "subliveinfoback")
+async def sub_live_info_back(callback: CallbackQuery):
+    user_data = get_user_sub(str(callback.from_user.id))
+    city = user_data.get("city")
+    if city:
+        await show_sub_live_list(callback, city, user_data.get("country"))
+    else:
+        await show_sub_live_country_selector(callback)
+
+
+@DP.callback_query(F.data.startswith("subliveinfotoggle"))
+async def sub_live_info_toggle(callback: CallbackQuery):
+    gid = callback.data[len("subliveinfotoggle"):]
+    group_name = LIVE_GROUP_ID_TO_NAME.get(gid)
+    if not group_name:
+        await safe_callback_answer(callback, "Ошибка ID")
+        return
+    uid = str(callback.from_user.id)
+    user_data = get_user_sub(uid)
+    groups = user_data.setdefault("groups", {})
+    if group_name in groups and groups[group_name].get("type") == "live":
+        del groups[group_name]
+    else:
+        groups[group_name] = {"type": "live", "info": LIVE_GROUP_INFO.get(group_name, {})}
+        user_data["all_live"] = False
+    set_user_sub(uid, user_data)
+    user_data = get_user_sub(uid)
+    group = find_live_group_by_gid_for_user(gid, user_data)
+    if not group:
+        await safe_callback_answer(callback, "Ошибка ID")
+        return
+    subscribed = is_user_subscribed_to_live(user_data, group.get("name", ""))
+    await send_or_edit(
+        callback,
+        format_live_subscription_info(group, user_data),
+        parse_mode=HTML_MODE,
+        reply_markup=live_subscription_info_keyboard(gid, subscribed),
+    )
+
+
+@DP.callback_query(F.data.startswith("subliveinfo"))
+async def sub_live_info(callback: CallbackQuery):
+    gid = callback.data[len("subliveinfo"):]
+    user_data = get_user_sub(str(callback.from_user.id))
+    group = find_live_group_by_gid_for_user(gid, user_data)
+    if not group:
+        await safe_callback_answer(callback, "Ошибка ID")
+        return
+    subscribed = is_user_subscribed_to_live(user_data, group.get("name", ""))
+    await send_or_edit(
+        callback,
+        format_live_subscription_info(group, user_data),
+        parse_mode=HTML_MODE,
+        reply_markup=live_subscription_info_keyboard(gid, subscribed),
+    )
+
+
 @DP.callback_query(F.data == "subtoggleliveall")
 async def sub_toggle_live_all(callback: CallbackQuery):
     uid = str(callback.from_user.id)
@@ -2208,6 +2452,7 @@ async def btn_notification_settings(message: Message):
     await message.answer(render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu())
 
 
+@DP.message(F.text == "📩 Контакты")
 @DP.message(F.text == "Контакты")
 async def btn_contacts(message: Message):
     await message.answer(
