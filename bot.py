@@ -773,6 +773,37 @@ def collect_live_group_matches(query: str) -> List[dict]:
     return sorted(result, key=lambda g: (g.get("country") != "Россия", g.get("country", "").lower(), city_sort_key(g.get("city", "")), g.get("name", "").lower()))
 
 
+
+def format_group_days_for_search(group: dict, limit: int = 7) -> str:
+    day_parts = []
+    for entry in sorted(group.get("days", []), key=lambda e: (e.get("day", 0), e.get("start", "")))[:limit]:
+        day_index = entry.get("day")
+        if not isinstance(day_index, int) or day_index < 0 or day_index >= len(DAY_SHORT):
+            continue
+        start = entry.get("start", "")
+        end = entry.get("end", "")
+        label = " 🔧" if entry.get("is_work_meeting") else ""
+        if start and end:
+            day_parts.append(f"{DAY_SHORT[day_index]} {start}–{end}{label}")
+        elif start:
+            day_parts.append(f"{DAY_SHORT[day_index]} {start}{label}")
+    if len(group.get("days", [])) > limit:
+        day_parts.append("…")
+    return ", ".join(day_parts) if day_parts else "расписание не распознано"
+
+
+def format_live_search_line(group: dict, include_city: bool = True, indent: bool = False) -> str:
+    prefix = "  •" if indent else "•"
+    city_part = ""
+    if include_city:
+        city_part = f" — {escape_html(get_country_city_label(group.get('country'), group.get('city', '')))}"
+    address = escape_html(group.get("address", ""))
+    days_text = escape_html(format_group_days_for_search(group))
+    if address:
+        return f"{prefix} <b>{escape_html(group['name'])}</b>{city_part}; {address}; {days_text}"
+    return f"{prefix} <b>{escape_html(group['name'])}</b>{city_part}; {days_text}"
+
+
 def format_search_results(query: str) -> str:
     city_matches = get_searchable_cities(query)
     online_matches = collect_online_group_matches(query)
@@ -784,12 +815,17 @@ def format_search_results(query: str) -> str:
 
     if city_matches:
         lines.append("\n📍 <b>Города</b>")
-        for country, city in sorted(city_matches, key=lambda x: (x[0] != "Россия", x[0].lower(), city_sort_key(x[1])))[:20]:
-            count = len(get_live_groups_for_city(city, country))
-            suffix = f" — {count} групп" if count else ""
-            lines.append(f"• {escape_html(get_country_city_label(country, city))}{escape_html(suffix)}")
-        if len(city_matches) > 20:
-            lines.append(f"…и ещё {len(city_matches) - 20} городов. Уточните запрос.")
+        for country, city in sorted(city_matches, key=lambda x: (x[0] != "Россия", x[0].lower(), city_sort_key(x[1])))[:10]:
+            groups = get_live_groups_for_city(city, country)
+            count = len(groups)
+            count_text = f" — {count} групп" if count else ""
+            lines.append(f"• <b>{escape_html(get_country_city_label(country, city))}</b>{escape_html(count_text)}")
+            for group in sorted(groups, key=lambda g: g.get("name", "").lower())[:5]:
+                lines.append(format_live_search_line(group, include_city=False, indent=True))
+            if count > 5:
+                lines.append(f"  Показаны первые 5. Полный список — кнопкой ниже.")
+        if len(city_matches) > 10:
+            lines.append(f"…и ещё {len(city_matches) - 10} городов. Уточните запрос.")
 
     if online_matches:
         lines.append("\n🌐 <b>Онлайн</b>")
@@ -806,20 +842,33 @@ def format_search_results(query: str) -> str:
     if live_matches:
         lines.append("\n🏙 <b>Живые</b>")
         for group in live_matches[:20]:
-            day_parts = []
-            for entry in sorted(group.get("days", []), key=lambda e: (e.get("day", 0), e.get("start", "")))[:7]:
-                day_parts.append(f"{DAY_SHORT[entry['day']]} {entry['start']}")
-            days_text = ", ".join(day_parts) if day_parts else "расписание не распознано"
-            lines.append(
-                f"• <b>{escape_html(group['name'])}</b> — "
-                f"{escape_html(get_country_city_label(group.get('country'), group.get('city', '')))}; "
-                f"{escape_html(group.get('address', ''))}; {escape_html(days_text)}"
-            )
+            lines.append(format_live_search_line(group, include_city=True, indent=False))
         if len(live_matches) > 20:
             lines.append(f"…и ещё {len(live_matches) - 20} живых групп. Уточните запрос.")
 
     return "\n".join(lines)
 
+
+def build_search_results_keyboard(query: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    city_matches = sorted(get_searchable_cities(query), key=lambda x: (x[0] != "Россия", x[0].lower(), city_sort_key(x[1])))[:10]
+    for country, city in city_matches:
+        groups = get_live_groups_for_city(city, country)
+        if len(groups) > 5:
+            label = get_country_city_label(country, city)
+            builder.row(InlineKeyboardButton(text=f"Показать все: {label}", callback_data=f"searchcityfull{get_location_id(city, country)}"))
+    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
+    return builder.as_markup()
+
+
+def format_full_city_search_results(country: Optional[str], city: str) -> str:
+    groups = sorted(get_live_groups_for_city(city, country), key=lambda g: g.get("name", "").lower())
+    if not groups:
+        return f"В городе «{escape_html(get_country_city_label(country, city))}» живых групп не найдено."
+    lines = [f"📍 <b>{escape_html(get_country_city_label(country, city))}</b>", f"Групп: <b>{len(groups)}</b>"]
+    for group in groups:
+        lines.append(format_live_search_line(group, include_city=False, indent=False))
+    return "\n".join(lines)
 
 def get_user_sub(uid: str) -> dict:
     return STORE.get_user(uid)
@@ -1603,7 +1652,7 @@ async def main_live_callback(callback: CallbackQuery):
 @DP.callback_query(F.data == "searchgroup")
 async def search_group_callback(callback: CallbackQuery, state: FSMContext):
     await state.set_state(GroupNameSearch.waiting_for_name)
-    await send_or_edit(callback, "Введите название группы или города:", reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
+    await send_or_edit(callback, "Введите название группы или город:", reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
 
 
 @DP.message(StateFilter(GroupNameSearch.waiting_for_name))
@@ -1617,6 +1666,18 @@ async def search_group_input(message: Message, state: FSMContext):
         format_search_results(query),
         parse_mode=HTML_MODE,
         disable_web_page_preview=True,
+        reply_markup=build_search_results_keyboard(query),
+    )
+
+
+@DP.callback_query(F.data.startswith("searchcityfull"))
+async def search_full_city_callback(callback: CallbackQuery):
+    location_id = callback.data[len("searchcityfull"):]
+    country, city = resolve_location_id(location_id)
+    await send_or_edit(
+        callback,
+        format_full_city_search_results(country, city),
+        parse_mode=HTML_MODE,
         reply_markup=back_markup("⬅️ Главное меню", "mainmenu"),
     )
 
