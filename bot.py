@@ -1710,32 +1710,28 @@ async def show_sub_online_list(target: CallbackQuery | Message):
     lines = [
         "🌐 <b>Онлайн-группы</b>",
         "",
-        "Нажмите на кнопку с названием группы, чтобы включить или выключить уведомления.",
+        "Нажмите на колокольчик, чтобы включить или выключить подписку.",
+        "Нажмите на название группы, чтобы посмотреть подробности.",
         "🔔 — включено, 🔕 — выключено",
         "",
         escape_html(ONLINE_TIME_NOTE),
     ]
+
     for gid, name in sorted(ONLINE_GROUP_ID_TO_NAME.items(), key=lambda x: x[1].lower()):
         prefix = "🔔" if is_user_subscribed_to_online(user_data, name) else "🔕"
-        schedule = format_online_full_schedule(name)
-        occurrences = collect_online_occurrences_for_group(name)
-        url = occurrences[0][2] if occurrences else ONLINE_GROUP_INFO.get(name, {}).get("url", "")
-        lines.append("")
-        lines.append(f"{prefix} <b>{escape_html(name)}</b>")
-        lines.append(f"Расписание: {escape_html(schedule)}")
-        if url:
-            lines.append(f'Ссылка: <a href="{url}">перейти</a>')
-        builder.row(InlineKeyboardButton(text=online_subscription_button_text(prefix, name), callback_data=f"subtoggleonline{gid}"))
+        builder.row(
+            InlineKeyboardButton(text=prefix, callback_data=f"subtoggleonline{gid}"),
+            InlineKeyboardButton(text=name, callback_data=f"subonlineinfo{gid}"),
+        )
 
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
-    await send_long_text(
+    await send_or_edit(
         target,
-        None,
         "\n".join(lines),
-        final_markup=builder.as_markup(),
         parse_mode=HTML_MODE,
         disable_web_page_preview=True,
+        reply_markup=builder.as_markup(),
     )
 
 
@@ -1777,7 +1773,8 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str, country
     lines = [
         f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>",
         "",
-        "Нажмите на кнопку с названием группы, чтобы включить или выключить уведомления.",
+        "Нажмите на колокольчик, чтобы включить или выключить подписку.",
+        "Нажмите на название группы, чтобы посмотреть подробности.",
         "🔔 — включено, 🔕 — выключено",
     ]
     seen_names = set()
@@ -1788,22 +1785,18 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str, country
         seen_names.add(name)
         gid = make_short_id("l", name)
         prefix = "🔔" if is_user_subscribed_to_live(user_data, name) else "🔕"
-        address = group.get("address", "") or "не указан"
-        schedule = format_group_days_for_search(group, limit=30)
-        lines.append("")
-        lines.append(f"{prefix} <b>{escape_html(name)}</b>")
-        lines.append(f"Адрес: {escape_html(address)}")
-        lines.append(f"Расписание: {escape_html(schedule)}")
-        builder.row(InlineKeyboardButton(text=live_subscription_button_text(prefix, group), callback_data=f"subtogglelive{gid}"))
+        builder.row(
+            InlineKeyboardButton(text=prefix, callback_data=f"subtogglelive{gid}"),
+            InlineKeyboardButton(text=name, callback_data=f"subliveinfo{gid}"),
+        )
     builder.row(InlineKeyboardButton(text="🏙 Сменить город", callback_data="sublivecitychange"))
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
-    await send_long_text(
+    await send_or_edit(
         target,
-        None,
         "\n".join(lines),
-        final_markup=builder.as_markup(),
         parse_mode=HTML_MODE,
+        reply_markup=builder.as_markup(),
     )
 
 
