@@ -1677,10 +1677,7 @@ async def show_sub_online_list(target: CallbackQuery | Message):
     builder.row(InlineKeyboardButton(text=f"{all_prefix} Все онлайн", callback_data="subtoggleonlineall"))
     for gid, name in sorted(ONLINE_GROUP_ID_TO_NAME.items(), key=lambda x: x[1].lower()):
         prefix = "🔔" if is_user_subscribed_to_online(user_data, name) else "🔕"
-        builder.row(
-            InlineKeyboardButton(text=online_subscription_button_text(prefix, name), callback_data=f"subtoggleonline{gid}"),
-            InlineKeyboardButton(text="Подробнее", callback_data=f"subonlineinfo{gid}"),
-        )
+        builder.row(InlineKeyboardButton(text=online_subscription_button_text(prefix, name), callback_data=f"subonlineinfo{gid}"))
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     await send_or_edit(
@@ -1733,10 +1730,7 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str, country
         seen_names.add(name)
         gid = make_short_id("l", name)
         prefix = "🔔" if is_user_subscribed_to_live(user_data, name) else "🔕"
-        builder.row(
-            InlineKeyboardButton(text=live_subscription_button_text(prefix, group), callback_data=f"subtogglelive{gid}"),
-            InlineKeyboardButton(text="Подробнее", callback_data=f"subliveinfo{gid}"),
-        )
+        builder.row(InlineKeyboardButton(text=live_subscription_button_text(prefix, group), callback_data=f"subliveinfo{gid}"))
     builder.row(InlineKeyboardButton(text="🏙 Сменить город", callback_data="sublivecitychange"))
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
