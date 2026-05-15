@@ -631,6 +631,76 @@ def compact_address_hint(address: str, max_len: int = 42) -> str:
     return hint.rstrip(" .,;-")
 
 
+def abbreviate_place_hint(text: str, max_len: int = 22) -> str:
+    """Сжимает ориентир для кнопки: название группы важнее топонима."""
+    text = re.sub(r"\s+", " ", str(text or "")).strip(" .;,\"'«»")
+    if not text:
+        return ""
+
+    replacements = [
+        (r"\bПроспект\s+Просвещения\b", "Пр. Просвещения"),
+        (r"\bпроспект\s+Просвещения\b", "Пр. Просвещения"),
+        (r"\bПроспект\b", "Пр."),
+        (r"\bпроспект\b", "пр."),
+        (r"\bулица\b", "ул."),
+        (r"\bУлица\b", "ул."),
+        (r"\bпереулок\b", "пер."),
+        (r"\bПереулок\b", "пер."),
+        (r"\bплощадь\b", "пл."),
+        (r"\bПлощадь\b", "пл."),
+        (r"\bнабережная\b", "наб."),
+        (r"\bНабережная\b", "наб."),
+        (r"\bшоссе\b", "ш."),
+        (r"\bШоссе\b", "ш."),
+    ]
+    for pattern, repl in replacements:
+        text = re.sub(pattern, repl, text)
+
+    text = re.sub(r"^м\.\s*Проспект\s+Просвещения\b", "м. Пр. Просвещения", text, flags=re.IGNORECASE)
+    text = re.sub(r"^м\.\s*", "м. ", text)
+    if len(text) > max_len:
+        text = text[:max_len].rsplit(" ", 1)[0] or text[:max_len]
+        text = text.rstrip(" .;,-") + "…"
+    return text
+
+
+def live_subscription_list_button_text(group: dict, bell: str, max_len: int = 60) -> str:
+    """Кнопка списка подписок: полное название в приоритете, затем время, затем короткий ориентир."""
+    name = re.sub(r"\s+", " ", str(group.get("name", "")).strip())
+    schedule = compact_live_schedule_for_button(group, max_len=22)
+    hint = abbreviate_place_hint(compact_address_hint(group.get("address", ""), max_len=32), max_len=18)
+
+    parts = [f"{bell} {name}"]
+    if schedule:
+        parts.append(schedule)
+    if hint:
+        parts.append(hint)
+    text = " · ".join(parts)
+    if len(text) <= max_len:
+        return text
+
+    # Сначала режем ориентир: он наименее важен.
+    if hint:
+        for hint_len in (16, 14, 12, 10):
+            short_hint = abbreviate_place_hint(hint, max_len=hint_len)
+            text = " · ".join([p for p in [f"{bell} {name}", schedule, short_hint] if p])
+            if len(text) <= max_len:
+                return text
+
+    # Потом режем расписание.
+    if schedule:
+        short_schedule = compact_live_schedule_for_button(group, max_len=16)
+        text = " · ".join([p for p in [f"{bell} {name}", short_schedule, hint] if p])
+        if len(text) <= max_len:
+            return text
+        text = " · ".join([p for p in [f"{bell} {name}", short_schedule] if p])
+        if len(text) <= max_len:
+            return text
+
+    # Название режем только в последнюю очередь.
+    return trim_button_text(text, max_len=max_len)
+
+
 def trim_button_text(text: str, max_len: int = 64) -> str:
     text = re.sub(r"\s+", " ", str(text or "")).strip()
     if len(text) <= max_len:
@@ -1947,12 +2017,7 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str, country
         gid = make_short_id("l", name)
         subscribed = is_user_subscribed_to_live(user_data, name)
         bell = "🔔" if subscribed else "🔕"
-        schedule = compact_live_schedule_for_button(group, max_len=26)
-        hint = compact_address_hint(group.get("address", ""), max_len=24)
-        suffix = f" · {schedule}"
-        if hint:
-            suffix += f" · {hint}"
-        button_text = trim_button_text(f"{bell} {name}{suffix}", max_len=60)
+        button_text = live_subscription_list_button_text(group, bell, max_len=60)
         builder.row(InlineKeyboardButton(text=button_text, callback_data=f"subliveinfo:{page}:{gid}"))
 
     if total_pages > 1:
