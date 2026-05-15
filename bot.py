@@ -708,8 +708,38 @@ def trim_button_text(text: str, max_len: int = 64) -> str:
     return text[:max_len - 1].rstrip(" .;,-") + "…"
 
 
+def format_group_start_days_for_button(group: dict, limit: int = 3) -> str:
+    """Краткое расписание для кнопок подписок: только дни и время начала, без времени окончания."""
+    entries = [
+        e for e in group.get("days", [])
+        if isinstance(e.get("day"), int) and 0 <= e.get("day") < len(DAY_SHORT)
+    ]
+    if not entries:
+        return "расписание не указано"
+
+    by_start: Dict[Tuple[str, bool], List[int]] = {}
+    for entry in entries:
+        start = str(entry.get("start", "")).strip()
+        if not start:
+            continue
+        key = (start, bool(entry.get("is_work_meeting")))
+        by_start.setdefault(key, []).append(entry.get("day"))
+
+    parts = []
+    for (start, is_work_meeting), days in sorted(by_start.items(), key=lambda x: (min(x[1]), x[0][0])):
+        if limit and len(parts) >= limit:
+            parts.append("…")
+            break
+        day_text = format_day_list(days)
+        if not day_text:
+            continue
+        label = " 🔧" if is_work_meeting else ""
+        parts.append(f"{day_text} {start}{label}")
+    return "; ".join(parts) if parts else "расписание не указано"
+
+
 def compact_live_schedule_for_button(group: dict, max_len: int = 28) -> str:
-    schedule = format_group_days_for_search(group, limit=3)
+    schedule = format_group_start_days_for_button(group, limit=3)
     schedule = re.sub(r"\s+", " ", str(schedule or "")).strip()
     if not schedule:
         return "расписание не указано"
