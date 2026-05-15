@@ -132,8 +132,8 @@ ONLINE_SCHEDULE = {
         ("14:00", "Венеция", "https://t.me/joinchat/AocB9y6QC_k2ZjJi"),
         ("18:00", "Весна", "https://t.me/vdavesna_2021"),
         ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
-        ("19:00", "Вместе", "https://chat.whatsapp.com/0CvEyMffhB60ZHQcShdva7"),
-        ("19:00", "Точка Опоры", "https://us06web.zoom.us/j/88678026186?pwd=QYiLNtlro6gEZ3f6eVZdwu7CAHbVF3.1"),
+        ("19:00", "Вместе (WhatsApp)", "https://chat.whatsapp.com/0CvEyMffhB60ZHQcShdva7"),
+        ("19:00", "Точка Опоры (Zoom)", "https://us06web.zoom.us/j/88678026186?pwd=QYiLNtlro6gEZ3f6eVZdwu7CAHbVF3.1"),
         ("19:00", "Светский круг (жен.)", "https://t.me/+Pyarr0R7MSEyMGIy"),
         ("19:00", "ВДА-ВЕРА", "https://t.me/+J2m1MAbQ818zNTFi"),
         ("19:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
@@ -143,7 +143,7 @@ ONLINE_SCHEDULE = {
         ("21:00", "ДЫШИ!", "https://t.me/breathelivebe"),
         ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
-        ("22:00", "Восст. Люб. Род.", "https://us02web.zoom.us/j/86893102645?pwd=d2N1UWFDY3Y5RXBpTUdQcWpDdEZVUT09UT09"),
+        ("22:00", "Восст. Люб. Род. (Zoom)", "https://us02web.zoom.us/j/86893102645?pwd=d2N1UWFDY3Y5RXBpTUdQcWpDdEZVUT09UT09"),
     ],
     3: [
         ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
@@ -193,7 +193,7 @@ ONLINE_SCHEDULE = {
         ("19:00", "Девчата", "https://t.me/+FKs5HqhF711iZTli"),
         ("19:00", "ВДА-ВЕРА", "https://t.me/+J2m1MAbQ818zNTFi"),
         ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
-        ("20:00", "Восст. Люб. Род.", "https://us02web.zoom.us/j/86893102645?pwd=d2N1UWFDY3Y5RXBpTUdQcWpDdEZVUT09UT09"),
+        ("20:00", "Восст. Люб. Род. (Zoom)", "https://us02web.zoom.us/j/86893102645?pwd=d2N1UWFDY3Y5RXBpTUdQcWpDdEZVUT09UT09"),
         ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
     ],
@@ -208,7 +208,7 @@ ONLINE_SCHEDULE = {
         ("14:00", "Венеция", "https://t.me/joinchat/AocB9y6QC_k2ZjJi"),
         ("18:00", "Ежедневник ВДА", "https://t.me/VDAOXOTNIRYAD"),
         ("18:00", "Весна", "https://t.me/vdavesna_2021"),
-        ("19:00", "Сила и Надежда (Watsup)", "https://chat.whatsapp.com/CUc0VVemIvl7Aoe2cuYCav"),
+        ("19:00", "Сила и Надежда (WhatsApp)", "https://chat.whatsapp.com/CUc0VVemIvl7Aoe2cuYCav"),
         ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
         ("19:30", "Эффект бабочки", "https://t.me/+FcaUkHDOuMpkMTI8"),
         ("20:00", "Огоньки", "https://t.me/ogonki2025"),
@@ -244,7 +244,7 @@ add_online_group([6], "21:30", "БШН", "https://t.me/bshnvda")
 # Свобода теперь проводится ежедневно в 09:00 и 21:00.
 add_online_group(range(7), "09:00", "Свобода", "https://t.me/vda_svoboda")
 
-add_online_group([2, 4, 5], "13:00", "Начало", "https://max.ru/join/K1vR_TmHfgSBKnKR9DT04dX1vO81a3GuyBP3kc0fsio")
+add_online_group([2, 4, 5], "13:00", "Начало (MAX)", "https://max.ru/join/K1vR_TmHfgSBKnKR9DT04dX1vO81a3GuyBP3kc0fsio")
 
 
 class LiveGroupSearch(StatesGroup):
@@ -267,7 +267,7 @@ REPLY_MAIN_MENU = ReplyKeyboardMarkup(
         ],
         [
             KeyboardButton(text="🔔 Мои подписки"),
-            KeyboardButton(text="Настройки уведомлений"),
+            KeyboardButton(text="Настройки подписок"),
         ],
         [
             KeyboardButton(text="🔍 Найти группу"),
@@ -877,8 +877,8 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🏙 Живые встречи", callback_data="mainlive"),
     )
     builder.row(
-        InlineKeyboardButton(text="🔔 Мои подписки", callback_data="mainsub"),
-        InlineKeyboardButton(text="Настройки уведомлений", callback_data="settingsroot"),
+        InlineKeyboardButton(text="🔔 Мои подписки", callback_data="mainmygroups"),
+        InlineKeyboardButton(text="Настройки подписок", callback_data="settingsroot"),
     )
     builder.row(
         InlineKeyboardButton(text="🔍 Найти группу", callback_data="searchgroup"),
@@ -1051,7 +1051,7 @@ def build_subscriptions_menu() -> InlineKeyboardMarkup:
     builder.row(InlineKeyboardButton(text="Мои подписки", callback_data="mainmygroups"))
     builder.row(InlineKeyboardButton(text="Выбрать онлайн-группы", callback_data="subonline"))
     builder.row(InlineKeyboardButton(text="Выбрать живые группы", callback_data="sublive"))
-    builder.row(InlineKeyboardButton(text="Настройки уведомлений", callback_data="settingsroot"))
+    builder.row(InlineKeyboardButton(text="Настройки подписок", callback_data="settingsroot"))
     builder.row(InlineKeyboardButton(text="🔕 Отписаться от всего", callback_data="mainunsubscribe"))
     builder.row(InlineKeyboardButton(text="← Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
@@ -1063,7 +1063,6 @@ def build_my_groups_menu() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="Изменить онлайн", callback_data="subonline"),
         InlineKeyboardButton(text="Изменить живые", callback_data="sublive"),
     )
-    builder.row(InlineKeyboardButton(text="Настроить уведомления", callback_data="settingsroot"))
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="← Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
@@ -1137,7 +1136,7 @@ def render_my_groups_text(user_data: dict) -> str:
 
 def render_settings_root_text(user_data: dict) -> str:
     return (
-        "⚙️ <b>Настройки уведомлений</b>\n\n"
+        "⚙️ <b>Настройки подписок</b>\n\n"
         f"{format_settings_line('🌐 Онлайн', get_online_settings(user_data))}\n"
         f"{format_settings_line('🏙 Живые', get_live_settings(user_data))}"
     )
@@ -1529,11 +1528,18 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
     builder.row(InlineKeyboardButton(text="← К настройкам", callback_data="settingsroot"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
 
-    daily_text = f"включена, {settings['daily_hour']:02d}" if daily_enabled else "выключена"
+    if daily_enabled:
+        daily_block = (
+            "Статус: <b>включена</b>\n"
+            f"Время: <b>{int(settings.get('daily_hour', DEFAULT_DAILY_HOUR)):02d}:00</b>"
+        )
+    else:
+        daily_block = "Статус: <b>выключена</b>"
+
     text = (
         f"<b>{title}</b>\n\n"
         f"🕖 <b>Утренняя сводка</b>\n"
-        f"Состояние: <b>{daily_text}</b>\n\n"
+        f"{daily_block}\n\n"
         f"⏰ <b>Напоминания о встречах</b>\n"
         f"Когда напоминать: <b>{format_remind_label(settings['remind_before'])}</b>"
     )
@@ -2027,11 +2033,11 @@ async def btn_live(message: Message):
 
 
 @DP.message(F.text == "🔔 Подписки")
-@DP.message(F.text == "🔔 Мои подписки")
 async def btn_subscriptions(message: Message):
     await show_sub_main(message)
 
 
+@DP.message(F.text == "🔔 Мои подписки")
 @DP.message(F.text == "⭐ Мои группы")
 async def btn_my_groups(message: Message):
     await message.answer(
@@ -2071,6 +2077,7 @@ async def btn_slogan(message: Message):
 
 
 @DP.message(F.text == "Настройки уведомлений")
+@DP.message(F.text == "Настройки подписок")
 async def btn_notification_settings(message: Message):
     user_data = get_user_sub(str(message.from_user.id))
     await message.answer(render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu())
