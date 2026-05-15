@@ -580,7 +580,7 @@ def get_countries_with_live_groups() -> List[str]:
 
 def city_sort_key(city: str) -> str:
     normalized = re.sub(r"^г\.?\s+", "", city.strip(), flags=re.IGNORECASE)
-    normalized = re.sub(r"\s*\(СПб\)\s*$", "", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"\s*\((СПб|Мск)\)\s*$", "", normalized, flags=re.IGNORECASE)
     return normalized.lower()
 
 
