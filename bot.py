@@ -631,9 +631,31 @@ def compact_address_hint(address: str, max_len: int = 42) -> str:
     return hint.rstrip(" .,;-")
 
 
-def live_subscription_button_text(prefix: str, group: dict) -> str:
+def trim_button_text(text: str, max_len: int = 64) -> str:
+    text = re.sub(r"\s+", " ", str(text or "")).strip()
+    if len(text) <= max_len:
+        return text
+    return text[:max_len - 1].rstrip(" .;,-") + "…"
+
+
+def compact_live_schedule_for_button(group: dict, max_len: int = 28) -> str:
+    schedule = format_group_days_for_search(group, limit=3)
+    schedule = re.sub(r"\s+", " ", str(schedule or "")).strip()
+    if not schedule:
+        return "расписание не указано"
+    if len(schedule) > max_len:
+        cut = schedule[:max_len].rsplit(";", 1)[0].strip()
+        if not cut or len(cut) < 8:
+            cut = schedule[:max_len].rsplit(" ", 1)[0].strip() or schedule[:max_len].strip()
+        schedule = cut.rstrip(" .;,-") + "…"
+    return schedule
+
+
+def live_subscription_button_text(group: dict, max_len: int = 64) -> str:
     name = group.get("name", "")
-    return f"{prefix} {name}"
+    schedule = compact_live_schedule_for_button(group, max_len=24)
+    hint = compact_address_hint(group.get("address", ""), max_len=20)
+    return trim_button_text(f"{name} · {schedule} · {hint}", max_len=max_len)
 
 
 def collect_online_occurrences_for_group(name: str) -> List[Tuple[int, str, str]]:
@@ -702,8 +724,9 @@ def compact_online_schedule_for_button(name: str, max_len: int = 42) -> str:
     return format_online_schedule(name, max_len=max_len)
 
 
-def online_subscription_button_text(prefix: str, name: str) -> str:
-    return f"{prefix} {name}"
+def online_subscription_button_text(name: str, max_len: int = 64) -> str:
+    schedule = compact_online_schedule_for_button(name, max_len=30)
+    return trim_button_text(f"{name} · {schedule}", max_len=max_len)
 
 
 def format_online_full_schedule(name: str) -> str:
@@ -1710,8 +1733,8 @@ async def show_sub_online_list(target: CallbackQuery | Message):
     lines = [
         "🌐 <b>Онлайн-группы</b>",
         "",
-        "Нажмите на колокольчик, чтобы включить или выключить подписку.",
-        "Нажмите на название группы, чтобы посмотреть подробности.",
+        "Кнопка с названием открывает подробности.",
+        "Колокольчик включает или выключает подписку.",
         "🔔 — включено, 🔕 — выключено",
         "",
         escape_html(ONLINE_TIME_NOTE),
@@ -1720,8 +1743,8 @@ async def show_sub_online_list(target: CallbackQuery | Message):
     for gid, name in sorted(ONLINE_GROUP_ID_TO_NAME.items(), key=lambda x: x[1].lower()):
         prefix = "🔔" if is_user_subscribed_to_online(user_data, name) else "🔕"
         builder.row(
+            InlineKeyboardButton(text=online_subscription_button_text(name), callback_data=f"subonlineinfo{gid}"),
             InlineKeyboardButton(text=prefix, callback_data=f"subtoggleonline{gid}"),
-            InlineKeyboardButton(text=name, callback_data=f"subonlineinfo{gid}"),
         )
 
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
@@ -1773,8 +1796,8 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str, country
     lines = [
         f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>",
         "",
-        "Нажмите на колокольчик, чтобы включить или выключить подписку.",
-        "Нажмите на название группы, чтобы посмотреть подробности.",
+        "Кнопка с названием открывает подробности.",
+        "Колокольчик включает или выключает подписку.",
         "🔔 — включено, 🔕 — выключено",
     ]
     seen_names = set()
@@ -1786,8 +1809,8 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str, country
         gid = make_short_id("l", name)
         prefix = "🔔" if is_user_subscribed_to_live(user_data, name) else "🔕"
         builder.row(
+            InlineKeyboardButton(text=live_subscription_button_text(group), callback_data=f"subliveinfo{gid}"),
             InlineKeyboardButton(text=prefix, callback_data=f"subtogglelive{gid}"),
-            InlineKeyboardButton(text=name, callback_data=f"subliveinfo{gid}"),
         )
     builder.row(InlineKeyboardButton(text="🏙 Сменить город", callback_data="sublivecitychange"))
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
