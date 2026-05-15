@@ -948,7 +948,6 @@ def build_online_menu_keyboard() -> InlineKeyboardMarkup:
     )
     builder.row(InlineKeyboardButton(text="📆 Выбрать день", callback_data="onlinechooseday"))
     builder.row(InlineKeyboardButton(text="🔍 Найти группу", callback_data="searchgroup"))
-    builder.row(InlineKeyboardButton(text="🔔 Настроить подписки", callback_data="subonline"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
