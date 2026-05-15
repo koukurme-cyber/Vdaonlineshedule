@@ -640,8 +640,8 @@ def abbreviate_place_hint(text: str, max_len: int = 22) -> str:
     replacements = [
         (r"\bТехнологический\s+институт\b", "Технол. ин-т"),
         (r"\bТехнологический\s+Институт\b", "Технол. ин-т"),
-        (r"\bПроспект\s+Просвещения\b", "Пр. Просвещения"),
-        (r"\bпроспект\s+Просвещения\b", "Пр. Просвещения"),
+        (r"\bПроспект\s+Просвещения\b", "Пр. Просв."),
+        (r"\bпроспект\s+Просвещения\b", "Пр. Просв."),
         (r"\bПроспект\b", "Пр."),
         (r"\bпроспект\b", "пр."),
         (r"\bулица\b", "ул."),
@@ -655,10 +655,13 @@ def abbreviate_place_hint(text: str, max_len: int = 22) -> str:
         (r"\bшоссе\b", "ш."),
         (r"\bШоссе\b", "ш."),
         (r"\bВасилеостровская\b", "В.О."),
+        (r"\bСенная\b", "Сенн."),
+        (r"\bСадовая\b", "Сад."),
+        (r"\bСпасская\b", "Спасс."),
         (r"\bВладимирская\b", "Владим."),
-        (r"\bДостоевская\b", "Достоевск."),
-        (r"\bНовочеркасская\b", "Новочерк."),
-        (r"\bЧернышевская\b", "Черныш."),
+        (r"\bДостоевская\b", "Дост."),
+        (r"\bНовочеркасская\b", "Новоч."),
+        (r"\bЧернышевская\b", "Черн."),
     ]
     for pattern, repl in replacements:
         text = re.sub(pattern, repl, text)
@@ -679,6 +682,8 @@ def short_group_name_for_button(name: str, max_len: int = 34) -> str:
         'Говори, доверяй, чувствуй': 'Говори, доверяй…',
         'Говори, доверяй, чувствуй”': 'Говори, доверяй…',
         'Говори Доверяй Чувствуй': 'Говори, доверяй…',
+        'Тепло («Азария»)': 'Тепло/Азария',
+        'Тепло ("Азария")': 'Тепло/Азария',
         'Доверие (Любящий Родитель)': 'Доверие (ЛР)',
         'Восстановление связи с Любящим Родителем': 'Любящий Родитель',
         'Практика применения пособия «Любящий родитель»': 'Практика ЛР',
@@ -697,12 +702,12 @@ def short_group_name_for_button(name: str, max_len: int = 34) -> str:
     return trim_button_text(text, max_len=max_len)
 
 
-def live_subscription_list_button_text(group: dict, bell: str, max_len: int = 60) -> str:
+def live_subscription_list_button_text(group: dict, bell: str, max_len: int = 48) -> str:
     """Кнопка списка подписок: полное название в приоритете, затем время, затем короткий ориентир."""
     full_name = re.sub(r"\s+", " ", str(group.get("name", "")).strip())
     name = short_group_name_for_button(full_name, max_len=34)
-    schedule = compact_live_schedule_for_button(group, max_len=22)
-    hint = abbreviate_place_hint(compact_address_hint(group.get("address", ""), max_len=32), max_len=18)
+    schedule = compact_live_schedule_for_button(group, max_len=18)
+    hint = abbreviate_place_hint(compact_address_hint(group.get("address", ""), max_len=28), max_len=14)
 
     parts = [f"{bell} {name}"]
     if schedule:
@@ -715,7 +720,7 @@ def live_subscription_list_button_text(group: dict, bell: str, max_len: int = 60
 
     # Сначала режем ориентир: он наименее важен.
     if hint:
-        for hint_len in (16, 14, 12, 10):
+        for hint_len in (14, 12, 10, 8):
             short_hint = abbreviate_place_hint(hint, max_len=hint_len)
             text = " · ".join([p for p in [f"{bell} {name}", schedule, short_hint] if p])
             if len(text) <= max_len:
@@ -742,8 +747,15 @@ def trim_button_text(text: str, max_len: int = 64) -> str:
     return text[:max_len - 1].rstrip(" .;,-") + "…"
 
 
+def short_time_for_button(value: str) -> str:
+    value = str(value or "").strip()
+    return re.sub(r":00$", "", value)
+
+
 def format_group_start_days_for_button(group: dict, limit: int = 3) -> str:
-    """Краткое расписание для кнопок подписок: только дни и время начала, без времени окончания."""
+    """Краткое расписание для кнопок подписок: только дни и время начала, без времени окончания.
+    Для экономии места ровные часы выводятся как 18, а не 18:00.
+    """
     entries = [
         e for e in group.get("days", [])
         if isinstance(e.get("day"), int) and 0 <= e.get("day") < len(DAY_SHORT)
@@ -756,7 +768,7 @@ def format_group_start_days_for_button(group: dict, limit: int = 3) -> str:
         start = str(entry.get("start", "")).strip()
         if not start:
             continue
-        key = (start, bool(entry.get("is_work_meeting")))
+        key = (short_time_for_button(start), bool(entry.get("is_work_meeting")))
         by_start.setdefault(key, []).append(entry.get("day"))
 
     parts = []
@@ -1929,6 +1941,81 @@ async def show_sub_main(target: CallbackQuery | Message):
     await send_or_edit(target, text, parse_mode=HTML_MODE, reply_markup=build_subscriptions_menu())
 
 
+def compact_time_only_for_button(time_text: str) -> str:
+    """Short start-time formatting for internal use."""
+    text = str(time_text or "").strip()
+    text = re.sub(r"\b(\d{1,2}):00\b", lambda m: str(int(m.group(1))), text)
+    return text
+
+
+def subscription_action_label(is_subscribed: bool) -> str:
+    return "Отписаться" if is_subscribed else "Подписаться"
+
+
+def shorten_group_name_for_button(name: str) -> str:
+    text = str(name or "").strip()
+    replacements = {
+        "Тепло («Азария»)": "Тепло",
+        "Тепло (\"Азария\")": "Тепло",
+        "Тепло / Азария": "Тепло",
+        "Говори, доверяй, чувствуй": "Говори, доверяй…",
+        "Практика применения пособия «Любящий родитель»": "Практика ЛР",
+        "Практика применения пособия Любящий родитель": "Практика ЛР",
+        "Доверие (Любящий Родитель)": "Доверие (ЛР)",
+        "Доверие (Любящий родитель)": "Доверие (ЛР)",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    text = re.sub(r"Любящ(ий|его|им|ем|ая|ую)\s+Родител[ьяюем]*", "ЛР", text, flags=re.IGNORECASE)
+    return text
+
+
+def compact_days_only_schedule_for_button(schedule_text: str) -> str:
+    """Return only days for a button: 'Вт, Ср, Пт'."""
+    text = str(schedule_text or "").strip()
+    if not text:
+        return ""
+    day_order = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+    found = []
+    patterns = [
+        ("Пн", r"\b(Понедельник|Пн\.?)\b"),
+        ("Вт", r"\b(Вторник|Вт\.?)\b"),
+        ("Ср", r"\b(Среда|Ср\.?)\b"),
+        ("Чт", r"\b(Четверг|Чт\.?)\b"),
+        ("Пт", r"\b(Пятница|Пт\.?)\b"),
+        ("Сб", r"\b(Суббота|Сб\.?)\b"),
+        ("Вс", r"\b(Воскресенье|Вс\.?)\b"),
+    ]
+    for label, pattern in patterns:
+        if re.search(pattern, text, flags=re.IGNORECASE):
+            found.append(label)
+    found = [d for d in day_order if d in found]
+    if found == day_order:
+        return "ежедневно"
+    if found == day_order[:6]:
+        return "Пн–Сб"
+    if found == day_order[:5]:
+        return "Пн–Пт"
+    return ", ".join(found)
+
+
+def live_subscription_button_text(group: dict) -> str:
+    name = shorten_group_name_for_button(group.get("name", ""))
+    days = compact_days_only_schedule_for_button(format_live_group_schedule_compact(group))
+    if days:
+        return f"{name} · {days}"
+    return name
+
+
+def online_subscription_button_text(name: str) -> str:
+    short_name = shorten_group_name_for_button(name)
+    schedule = compact_online_schedule_for_button(name)
+    days = compact_days_only_schedule_for_button(schedule)
+    if days:
+        return f"{short_name} · {days}"
+    return short_name
+
+
 async def show_sub_online_list(target: CallbackQuery | Message, page: int = 0):
     """Короткий список онлайн-групп: название + минимальное расписание. Подробности и подписка — в карточке группы."""
     user_data = get_user_sub(str(target.from_user.id))
@@ -2082,7 +2169,7 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str, country
         gid = make_short_id("l", name)
         subscribed = is_user_subscribed_to_live(user_data, name)
         bell = "🔔" if subscribed else "🔕"
-        button_text = live_subscription_list_button_text(group, bell, max_len=60)
+        button_text = live_subscription_list_button_text(group, bell, max_len=48)
         builder.row(InlineKeyboardButton(text=button_text, callback_data=f"subliveinfo:{page}:{gid}"))
 
     if total_pages > 1:
