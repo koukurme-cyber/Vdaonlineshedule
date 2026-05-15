@@ -645,10 +645,42 @@ def collect_online_occurrences_for_group(name: str) -> List[Tuple[int, str, str]
     return sorted(occurrences, key=lambda x: (x[0], x[1]))
 
 
-def compact_online_schedule_for_button(name: str, max_len: int = 42) -> str:
+def format_day_list(day_indexes: List[int]) -> str:
+    days = sorted(set(d for d in day_indexes if isinstance(d, int) and 0 <= d < len(DAY_SHORT)))
+    if not days:
+        return ""
+    if days == list(range(7)):
+        return "ежедневно"
+    if days == list(range(6)):
+        return "Пн–Сб"
+    if days == [0, 1, 2, 3, 4]:
+        return "Пн–Пт"
+
+    ranges = []
+    start = prev = days[0]
+    for day in days[1:]:
+        if day == prev + 1:
+            prev = day
+            continue
+        ranges.append((start, prev))
+        start = prev = day
+    ranges.append((start, prev))
+
+    parts = []
+    for a, b in ranges:
+        if a == b:
+            parts.append(DAY_SHORT[a])
+        elif b == a + 1:
+            parts.extend([DAY_SHORT[a], DAY_SHORT[b]])
+        else:
+            parts.append(f"{DAY_SHORT[a]}–{DAY_SHORT[b]}")
+    return ", ".join(parts)
+
+
+def format_online_schedule(name: str, max_len: Optional[int] = None) -> str:
     occurrences = collect_online_occurrences_for_group(name)
     if not occurrences:
-        return ""
+        return "расписание не указано"
 
     by_time: Dict[str, List[int]] = {}
     for day_index, time_str, _ in occurrences:
@@ -656,35 +688,26 @@ def compact_online_schedule_for_button(name: str, max_len: int = 42) -> str:
 
     parts = []
     for time_str, day_indexes in sorted(by_time.items(), key=lambda x: (x[0], x[1])):
-        days = sorted(set(day_indexes))
-        if days == list(range(7)):
-            parts.append(f"ежедневно {time_str}")
-        elif days == list(range(6)):
-            parts.append(f"Пн–Сб {time_str}")
-        elif days == [0, 1, 2, 3, 4]:
-            parts.append(f"Пн–Пт {time_str}")
-        else:
-            parts.extend(f"{DAY_SHORT[d]} {time_str}" for d in days if 0 <= d < len(DAY_SHORT))
-
-    text = ", ".join(parts)
-    if len(text) > max_len:
-        text = text[:max_len].rsplit(",", 1)[0].rstrip() or text[:max_len].rstrip()
+        day_text = format_day_list(day_indexes)
+        if day_text:
+            parts.append(f"{day_text} {time_str}")
+    text = "; ".join(parts) if parts else "расписание не указано"
+    if max_len and len(text) > max_len:
+        text = text[:max_len].rsplit(";", 1)[0].rstrip() or text[:max_len].rstrip()
         text += "…"
     return text
 
 
+def compact_online_schedule_for_button(name: str, max_len: int = 42) -> str:
+    return format_online_schedule(name, max_len=max_len)
+
+
 def online_subscription_button_text(prefix: str, name: str) -> str:
-    schedule = compact_online_schedule_for_button(name)
-    if schedule:
-        return f"{prefix} {name} ({schedule})"
     return f"{prefix} {name}"
 
 
 def format_online_full_schedule(name: str) -> str:
-    occurrences = collect_online_occurrences_for_group(name)
-    if not occurrences:
-        return "расписание не указано"
-    return ", ".join(f"{DAY_SHORT[d]} {time_str}" for d, time_str, _ in occurrences if 0 <= d < len(DAY_SHORT))
+    return format_online_schedule(name)
 
 
 def format_online_subscription_info(name: str, user_data: dict) -> str:
@@ -942,21 +965,29 @@ def collect_live_group_matches(query: str) -> List[dict]:
 
 
 def format_group_days_for_search(group: dict, limit: int = 7) -> str:
-    day_parts = []
-    for entry in sorted(group.get("days", []), key=lambda e: (e.get("day", 0), e.get("start", "")))[:limit]:
-        day_index = entry.get("day")
-        if not isinstance(day_index, int) or day_index < 0 or day_index >= len(DAY_SHORT):
+    entries = [e for e in group.get("days", []) if isinstance(e.get("day"), int) and 0 <= e.get("day") < len(DAY_SHORT)]
+    if not entries:
+        return "расписание не распознано"
+
+    by_slot: Dict[Tuple[str, str, bool], List[int]] = {}
+    for entry in entries:
+        key = (entry.get("start", ""), entry.get("end", ""), bool(entry.get("is_work_meeting")))
+        by_slot.setdefault(key, []).append(entry.get("day"))
+
+    parts = []
+    for (start, end, is_work_meeting), days in sorted(by_slot.items(), key=lambda x: (min(x[1]), x[0][0], x[0][1])):
+        if limit and len(parts) >= limit:
+            parts.append("…")
+            break
+        day_text = format_day_list(days)
+        if not day_text:
             continue
-        start = entry.get("start", "")
-        end = entry.get("end", "")
-        label = " 🔧" if entry.get("is_work_meeting") else ""
+        label = " 🔧" if is_work_meeting else ""
         if start and end:
-            day_parts.append(f"{DAY_SHORT[day_index]} {start}–{end}{label}")
+            parts.append(f"{day_text} {start}–{end}{label}")
         elif start:
-            day_parts.append(f"{DAY_SHORT[day_index]} {start}{label}")
-    if len(group.get("days", [])) > limit:
-        day_parts.append("…")
-    return ", ".join(day_parts) if day_parts else "расписание не распознано"
+            parts.append(f"{day_text} {start}{label}")
+    return "; ".join(parts) if parts else "расписание не распознано"
 
 
 def format_live_search_line(group: dict, include_city: bool = True, indent: bool = False) -> str:
@@ -1675,16 +1706,36 @@ async def show_sub_online_list(target: CallbackQuery | Message):
     builder = InlineKeyboardBuilder()
     all_prefix = "🔔" if user_data.get("all_online") else "🔕"
     builder.row(InlineKeyboardButton(text=f"{all_prefix} Все онлайн", callback_data="subtoggleonlineall"))
+
+    lines = [
+        "🌐 <b>Онлайн-группы</b>",
+        "",
+        "Нажмите на кнопку с названием группы, чтобы включить или выключить уведомления.",
+        "🔔 — включено, 🔕 — выключено",
+        "",
+        escape_html(ONLINE_TIME_NOTE),
+    ]
     for gid, name in sorted(ONLINE_GROUP_ID_TO_NAME.items(), key=lambda x: x[1].lower()):
         prefix = "🔔" if is_user_subscribed_to_online(user_data, name) else "🔕"
-        builder.row(InlineKeyboardButton(text=online_subscription_button_text(prefix, name), callback_data=f"subonlineinfo{gid}"))
+        schedule = format_online_full_schedule(name)
+        occurrences = collect_online_occurrences_for_group(name)
+        url = occurrences[0][2] if occurrences else ONLINE_GROUP_INFO.get(name, {}).get("url", "")
+        lines.append("")
+        lines.append(f"{prefix} <b>{escape_html(name)}</b>")
+        lines.append(f"Расписание: {escape_html(schedule)}")
+        if url:
+            lines.append(f'Ссылка: <a href="{url}">перейти</a>')
+        builder.row(InlineKeyboardButton(text=online_subscription_button_text(prefix, name), callback_data=f"subtoggleonline{gid}"))
+
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
-    await send_or_edit(
+    await send_long_text(
         target,
-        "🌐 <b>Онлайн-группы</b>\n\nНажмите на группу, чтобы включить или выключить уведомления.\n🔔 — включено\n🔕 — выключено",
+        None,
+        "\n".join(lines),
+        final_markup=builder.as_markup(),
         parse_mode=HTML_MODE,
-        reply_markup=builder.as_markup(),
+        disable_web_page_preview=True,
     )
 
 
@@ -1722,6 +1773,13 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str, country
         builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
         await send_or_edit(target, f"🏙 <b>{escape_html(city)}</b>\n\nЖивые группы не найдены.", parse_mode=HTML_MODE, reply_markup=builder.as_markup())
         return
+
+    lines = [
+        f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>",
+        "",
+        "Нажмите на кнопку с названием группы, чтобы включить или выключить уведомления.",
+        "🔔 — включено, 🔕 — выключено",
+    ]
     seen_names = set()
     for group in city_groups:
         name = group.get("name", "")
@@ -1730,15 +1788,22 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str, country
         seen_names.add(name)
         gid = make_short_id("l", name)
         prefix = "🔔" if is_user_subscribed_to_live(user_data, name) else "🔕"
-        builder.row(InlineKeyboardButton(text=live_subscription_button_text(prefix, group), callback_data=f"subliveinfo{gid}"))
+        address = group.get("address", "") or "не указан"
+        schedule = format_group_days_for_search(group, limit=30)
+        lines.append("")
+        lines.append(f"{prefix} <b>{escape_html(name)}</b>")
+        lines.append(f"Адрес: {escape_html(address)}")
+        lines.append(f"Расписание: {escape_html(schedule)}")
+        builder.row(InlineKeyboardButton(text=live_subscription_button_text(prefix, group), callback_data=f"subtogglelive{gid}"))
     builder.row(InlineKeyboardButton(text="🏙 Сменить город", callback_data="sublivecitychange"))
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
-    await send_or_edit(
+    await send_long_text(
         target,
-        f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>\n\nНажмите на группу, чтобы включить или выключить уведомления.\n🔔 — включено\n🔕 — выключено",
+        None,
+        "\n".join(lines),
+        final_markup=builder.as_markup(),
         parse_mode=HTML_MODE,
-        reply_markup=builder.as_markup(),
     )
 
 
