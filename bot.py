@@ -2375,11 +2375,17 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
         mark = "✅ " if minutes in remind_set else ""
         return InlineKeyboardButton(text=f"{mark}{label}", callback_data=f"toggleremind:{prefix}:{minutes}")
 
-    builder.row(
-        remind_toggle_button(15, "За 15 мин"),
-        remind_toggle_button(60, "За 1 час"),
-    )
-    builder.row(remind_toggle_button(120, "За 2 часа"))
+    if is_online:
+        builder.row(
+            remind_toggle_button(15, "За 15 мин"),
+            remind_toggle_button(60, "За 1 час"),
+        )
+        builder.row(remind_toggle_button(120, "За 2 часа"))
+    else:
+        builder.row(
+            remind_toggle_button(60, "За 1 час"),
+            remind_toggle_button(120, "За 2 часа"),
+        )
 
     builder.row(InlineKeyboardButton(text="← К настройкам", callback_data="settingsroot"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
@@ -2875,7 +2881,7 @@ async def toggle_remind(callback: CallbackQuery):
         await safe_callback_answer(callback, "Ошибка")
         return
 
-    allowed = {15, 60, 120}
+    allowed = {15, 60, 120} if group_type == "online" else {60, 120}
     if minutes not in allowed:
         await safe_callback_answer(callback, "Недоступный вариант")
         return
