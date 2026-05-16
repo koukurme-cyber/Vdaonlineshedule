@@ -4,7 +4,6 @@ import hashlib
 import io
 import json
 import os
-import random
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -50,19 +49,6 @@ DAYS = [
 
 DAY_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 
-SLOGANS_AND_AFFIRMATIONS = [
-    "Программа простая, но не лёгкая",
-    "Жизнь больше, чем просто выживание",
-    "Можно жить по-другому",
-    "Только сегодня",
-    "Не суетись",
-    "Не усложняй",
-    "Прогресс, а не совершенство",
-    "Первым делом — главное",
-    "И эта боль тоже пройдёт",
-    "Отпусти. Пусти Бога",
-    "Возвращайтесь снова и снова",
-]
 
 SPB_SUBURBS = [
     "Санкт-Петербург",
@@ -251,11 +237,6 @@ add_online_group([2, 4, 5], "13:00", "Начало (MAX)", "https://max.ru/join/
 add_online_group([4], "19:00", "По шагам Тони А.", "https://t.me/+ajasg4oH0SU3MjFi")
 
 
-
-class LiveGroupSearch(StatesGroup):
-    waiting_for_city = State()
-
-
 class SubCitySearch(StatesGroup):
     waiting_for_city = State()
 
@@ -281,37 +262,6 @@ REPLY_MAIN_MENU = ReplyKeyboardMarkup(
     resize_keyboard=True,
     is_persistent=True,
 )
-
-
-GROUP_CHAT_NOTICE = "🏠 <b>Главное меню</b>\n\nНа данный момент бот не предназначен для использования в группах."
-
-
-def is_private_message(message: Message) -> bool:
-    return getattr(message.chat, "type", None) == "private"
-
-
-def is_private_callback(callback: CallbackQuery) -> bool:
-    message = getattr(callback, "message", None)
-    chat = getattr(message, "chat", None)
-    return getattr(chat, "type", None) == "private"
-
-
-async def reject_group_message(message: Message):
-    await message.answer(GROUP_CHAT_NOTICE, parse_mode=HTML_MODE)
-
-
-async def reject_group_callback(callback: CallbackQuery) -> bool:
-    if is_private_callback(callback):
-        return False
-    try:
-        await callback.answer("Бот не предназначен для использования в группах.", show_alert=True)
-    except Exception:
-        pass
-    try:
-        await callback.message.answer(GROUP_CHAT_NOTICE, parse_mode=HTML_MODE)
-    except Exception:
-        pass
-    return True
 
 def moscow_now() -> datetime:
     return datetime.utcnow() + timedelta(hours=3)
@@ -711,7 +661,6 @@ def abbreviate_place_hint(text: str, max_len: int = 22) -> str:
     return text
 
 
-
 def short_group_name_for_button(name: str, max_len: int = 34) -> str:
     """Короткое название только для кнопок. Полное название остаётся в карточке группы."""
     text = re.sub(r"\s+", " ", str(name or "").strip())
@@ -972,7 +921,6 @@ def format_online_subscription_info(name: str, user_data: dict) -> str:
     return "\n".join(lines)
 
 
-
 def find_live_group_by_gid_for_user(gid: str, user_data: dict) -> Optional[dict]:
     group_name = LIVE_GROUP_ID_TO_NAME.get(gid)
     if not group_name:
@@ -1004,7 +952,6 @@ def format_live_subscription_info(group: dict, user_data: dict) -> str:
         f"Расписание: {escape_html(days)}\n\n"
         f"Подписка: <b>{status}</b>"
     )
-
 
 
 def make_short_id(prefix: str, name: str) -> str:
@@ -1162,7 +1109,6 @@ def get_online_full() -> str:
     return "\n\n".join(parts) if parts else "Онлайн-групп нет."
 
 
-
 def normalize_search_query(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip().lower())
 
@@ -1190,7 +1136,6 @@ def collect_live_group_matches(query: str) -> List[dict]:
         seen.add(key)
         result.append(group)
     return sorted(result, key=lambda g: (g.get("country") != "Россия", g.get("country", "").lower(), city_sort_key(g.get("city", "")), g.get("name", "").lower()))
-
 
 
 def format_group_days_for_search(group: dict, limit: int = 7) -> str:
@@ -1229,7 +1174,6 @@ def format_live_search_line(group: dict, include_city: bool = True, indent: bool
     if address:
         return f"{prefix} <b>{escape_html(group['name'])}</b>{city_part}; {address}; {days_text}"
     return f"{prefix} <b>{escape_html(group['name'])}</b>{city_part}; {days_text}"
-
 
 
 def plural_ru(number: int, one: str, few: str, many: str) -> str:
@@ -1396,22 +1340,6 @@ def back_markup(text: str, callback_data: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=text, callback_data=callback_data)]])
 
 
-def build_main_menu_keyboard() -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="🌐 Онлайн-встречи", callback_data="mainonline"),
-        InlineKeyboardButton(text="🏙 Живые встречи", callback_data="mainlive"),
-    )
-    builder.row(
-        InlineKeyboardButton(text="🔔 Подписки", callback_data="mainsub"),
-        InlineKeyboardButton(text="🔎 Найти группу или город", callback_data="searchgroup"),
-    )
-    builder.row(InlineKeyboardButton(text="📩 Контакты", callback_data="maincontacts"))
-    return builder.as_markup()
-
-
-
-
 CONTACTS_TEXT = (
     'По вопросам актуализации информации о группах пишите '
     '<a href="https://t.me/koukurme2022">сюда</a> '
@@ -1429,23 +1357,12 @@ HELP_TEXT = (
     '<b>Команды</b>\n'
     '/start — открыть главное меню.\n'
     '/help — показать эту справку.\n'
-    '/slogan — получить случайную фразу поддержки.\n\n'
+    '\n'
     '<b>Подписки</b>\n'
     'Можно подписаться на все онлайн-группы, все живые группы выбранного города или отдельные группы. '
     'Утренняя сводка и напоминания за 1/2 часа настраиваются отдельно для онлайн- и живых встреч. '
     'Сводку можно отключить, оставив только напоминания перед началом групп.'
 )
-
-
-def build_more_menu_keyboard() -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="💫 Фраза поддержки", callback_data="mainslogan"),
-        InlineKeyboardButton(text="📩 Контакты", callback_data="maincontacts"),
-    )
-    builder.row(InlineKeyboardButton(text="Помощь", callback_data="mainhelp"))
-    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
-    return builder.as_markup()
 
 
 def build_live_root_keyboard(user_data: Optional[dict] = None) -> InlineKeyboardMarkup:
@@ -1827,8 +1744,6 @@ def build_live_multi_reminder(start: str, items: List[Tuple[str, str, bool]], mi
     return "\n".join(lines)
 
 
-
-
 def build_combined_reminder(start: str, online_items: List[Tuple[str, str]], live_items: List[Tuple[str, str, bool]], minutes_before: int) -> str:
     """One reminder for all subscribed groups that start at the same time."""
     before_text = "через час" if minutes_before == 60 else "через два часа"
@@ -2032,39 +1947,6 @@ def normalize_expanded_id(raw: Optional[str]) -> str:
         return ""
     return raw
 
-
-def encode_expanded_id(value: Optional[str]) -> str:
-    value = normalize_expanded_id(value)
-    return value if value else "-"
-
-
-def online_group_details_block(name: str, user_data: dict) -> List[str]:
-    occurrences = collect_online_occurrences_for_group(name)
-    url = occurrences[0][2] if occurrences else ONLINE_GROUP_INFO.get(name, {}).get("url", "")
-    status = "включена" if is_user_subscribed_to_online(user_data, name) else "выключена"
-    lines = [
-        f"Расписание: {escape_html(format_online_full_schedule(name))}",
-        f"Время: {escape_html(ONLINE_TIME_NOTE.lower())}",
-    ]
-    if url:
-        lines.append(f'Ссылка: <a href="{url}">перейти</a>')
-    lines.append(f"Подписка: <b>{status}</b>")
-    return lines
-
-
-def live_group_details_block(group: dict, user_data: dict) -> List[str]:
-    name = group.get("name", "")
-    country = group.get("country")
-    city = group.get("city", "")
-    address = group.get("address", "")
-    schedule = format_group_days_for_search(group, limit=30)
-    status = "включена" if is_user_subscribed_to_live(user_data, name) else "выключена"
-    return [
-        f"Расписание: {escape_html(schedule)}",
-        f"Адрес: {escape_html(address) if address else 'не указан'}",
-        f"Город: <b>{escape_html(get_country_city_label(country, city))}</b>",
-        f"Подписка: <b>{status}</b>",
-    ]
 
 async def show_sub_main(target: CallbackQuery | Message):
     user_data = get_user_sub(str(target.from_user.id))
@@ -2504,25 +2386,17 @@ DP = Dispatcher(storage=MemoryStorage())
 
 @DP.callback_query(F.data == "noop")
 async def noop_callback(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     await safe_callback_answer(callback)
 
 
 @DP.message(Command("start"))
 async def cmd_start(message: Message):
-    if not is_private_message(message):
-        await reject_group_message(message)
-        return
     await message.answer("Выберите раздел ниже.", reply_markup=REPLY_MAIN_MENU)
     await message.answer("🏠 <b>Главное меню</b>\n\nИспользуйте кнопки нижнего меню.", parse_mode=HTML_MODE)
 
 
 @DP.message(Command("help"))
 async def cmd_help(message: Message):
-    if not is_private_message(message):
-        await reject_group_message(message)
-        return
     await message.answer(
         HELP_TEXT,
         parse_mode=HTML_MODE,
@@ -2530,52 +2404,29 @@ async def cmd_help(message: Message):
     )
 
 
-@DP.message(Command("slogan"))
-async def cmd_slogan(message: Message):
-    if not is_private_message(message):
-        await reject_group_message(message)
-        return
-    await message.answer(
-        f"<b>Фраза поддержки</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
-        parse_mode=HTML_MODE,
-        reply_markup=back_markup("⬅️ Главное меню", "mainmenu"),
-    )
-
-
 @DP.callback_query(F.data == "mainmenu")
 async def main_menu_callback(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     await send_or_edit(callback, "🏠 <b>Главное меню</b>\n\nИспользуйте кнопки нижнего меню.", parse_mode=HTML_MODE, reply_markup=None)
 
 
 @DP.callback_query(F.data == "mainonline")
 async def main_online_callback(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     await send_or_edit(callback, "🌐 <b>Онлайн-встречи</b>\n\nПроходят в Telegram / Zoom / MAX.\nВремя указано московское.", parse_mode=HTML_MODE, reply_markup=build_online_menu_keyboard())
 
 
 @DP.callback_query(F.data == "mainlive")
 async def main_live_callback(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     await send_or_edit(callback, "🏙 <b>Живые встречи</b>\n\nПроходят очно в выбранном городе.", parse_mode=HTML_MODE, reply_markup=build_live_root_keyboard(get_user_sub(str(callback.from_user.id))))
 
 
 @DP.callback_query(F.data == "searchgroup")
 async def search_group_callback(callback: CallbackQuery, state: FSMContext):
-    if await reject_group_callback(callback):
-        return
     await state.set_state(GroupNameSearch.waiting_for_name)
     await send_or_edit(callback, "Введите название группы или город:", reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
 
 
 @DP.message(StateFilter(GroupNameSearch.waiting_for_name))
 async def search_group_input(message: Message, state: FSMContext):
-    if not is_private_message(message):
-        await reject_group_message(message)
-        return
     await state.clear()
     query = (message.text or "").strip()
     if len(query) < 2:
@@ -2591,8 +2442,6 @@ async def search_group_input(message: Message, state: FSMContext):
 
 @DP.callback_query(F.data.startswith("searchcityfull"))
 async def search_full_city_callback(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     location_id = callback.data[len("searchcityfull"):]
     country, city = resolve_location_id(location_id)
     await send_or_edit(
@@ -2605,15 +2454,11 @@ async def search_full_city_callback(callback: CallbackQuery):
 
 @DP.callback_query(F.data == "livechoosecountry")
 async def live_choose_country_callback(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     await send_or_edit(callback, "🌍 Выберите страну:", parse_mode=HTML_MODE, reply_markup=build_live_country_keyboard())
 
 
 @DP.callback_query(F.data.startswith("livecountry"))
 async def live_choose_city_callback(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     country_id, page = parse_country_page(callback.data[len("livecountry"):])
     country = ID_TO_COUNTRY.get(country_id, country_id)
     total = len(get_cities_for_country(country))
@@ -2623,8 +2468,6 @@ async def live_choose_city_callback(callback: CallbackQuery):
 
 @DP.callback_query(F.data == "livemycity")
 async def live_my_city_callback(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     user_data = get_user_sub(str(callback.from_user.id))
     city = user_data.get("city")
     if not city:
@@ -2633,29 +2476,8 @@ async def live_my_city_callback(callback: CallbackQuery):
     await send_or_edit(callback, f"🏙 <b>{escape_html(get_country_city_label(user_data.get('country'), city))}</b>", parse_mode=HTML_MODE, reply_markup=live_period_keyboard(city, user_data.get("country")))
 
 
-@DP.callback_query(F.data == "mainmore")
-async def main_more_callback(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
-    await send_or_edit(callback, "<b>Ещё</b>", parse_mode=HTML_MODE, reply_markup=build_more_menu_keyboard())
-
-
-@DP.callback_query(F.data == "mainhelp")
-async def main_help_callback(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
-    await send_or_edit(
-        callback,
-        HELP_TEXT,
-        parse_mode=HTML_MODE,
-        reply_markup=back_markup("← Ещё", "mainmore"),
-    )
-
-
 @DP.callback_query(F.data == "maincontacts")
 async def main_contacts_callback(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     await send_or_edit(
         callback,
         CONTACTS_TEXT,
@@ -2665,67 +2487,41 @@ async def main_contacts_callback(callback: CallbackQuery):
     )
 
 
-@DP.callback_query(F.data == "mainslogan")
-async def main_slogan_callback(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
-    await send_or_edit(
-        callback,
-        f"<b>Фраза поддержки</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
-        parse_mode=HTML_MODE,
-        reply_markup=back_markup("← Ещё", "mainmore"),
-    )
-
-
 @DP.callback_query(F.data == "mainsub")
 async def main_sub_callback(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     await show_sub_main(callback)
 
 
 @DP.callback_query(F.data == "mainsettings")
 async def main_settings_callback(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     user_data = get_user_sub(str(callback.from_user.id))
     await send_or_edit(callback, render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu(user_data))
 
 
 @DP.callback_query(F.data == "mainmygroups")
 async def main_my_groups_callback(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     user_data = get_user_sub(str(callback.from_user.id))
     await send_or_edit(callback, render_my_groups_text(user_data), parse_mode=HTML_MODE, reply_markup=build_my_groups_menu())
 
 
 @DP.callback_query(F.data == "mainunsubscribe")
 async def main_unsubscribe_callback(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     remove_subscriber(str(callback.from_user.id))
     await send_or_edit(callback, "🔕 Вы отписались от всех уведомлений.")
 
 
 @DP.callback_query(F.data == "submainback")
 async def sub_main_back(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     await show_sub_main(callback)
 
 
 @DP.callback_query(F.data == "subonline")
 async def sub_online_list(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     await show_sub_online_list(callback)
 
 
 @DP.callback_query(F.data == "sublive")
 async def sub_live_start(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     user_data = get_user_sub(str(callback.from_user.id))
     city = user_data.get("city")
     country = user_data.get("country")
@@ -2737,15 +2533,11 @@ async def sub_live_start(callback: CallbackQuery):
 
 @DP.callback_query(F.data == "sublivecitychange")
 async def sub_live_city_change(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     await show_sub_live_country_selector(callback)
 
 
 @DP.callback_query(F.data.startswith("sublivecountry"))
 async def sub_live_country_selected(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     country_id, page = parse_country_page(callback.data[len("sublivecountry"):])
     country = ID_TO_COUNTRY.get(country_id, country_id)
     await show_sub_live_city_selector(callback, country, page)
@@ -2753,17 +2545,12 @@ async def sub_live_country_selected(callback: CallbackQuery):
 
 @DP.callback_query(F.data == "sublivecitysearch")
 async def sub_live_city_search(callback: CallbackQuery, state: FSMContext):
-    if await reject_group_callback(callback):
-        return
     await state.set_state(SubCitySearch.waiting_for_city)
     await send_or_edit(callback, "Введите город для живых подписок:", reply_markup=back_markup("← К подпискам", "submainback"))
 
 
 @DP.message(StateFilter(SubCitySearch.waiting_for_city))
 async def sub_live_city_input(message: Message, state: FSMContext):
-    if not is_private_message(message):
-        await reject_group_message(message)
-        return
     await state.clear()
     matched = get_searchable_cities((message.text or "").strip())
     if not matched:
@@ -2781,8 +2568,6 @@ async def sub_live_city_input(message: Message, state: FSMContext):
 
 @DP.callback_query(F.data.startswith("sublivecity"))
 async def sub_live_city_selected(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     cid = callback.data[len("sublivecity"):]
     if cid == "search":
         return
@@ -2795,11 +2580,8 @@ async def sub_live_city_selected(callback: CallbackQuery):
     await show_sub_live_list(callback, city, country)
 
 
-
 @DP.callback_query(F.data == "subtoggleonlineall")
 async def sub_toggle_online_all(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     uid = str(callback.from_user.id)
     user_data = get_user_sub(uid)
     user_data["all_online"] = not user_data.get("all_online", False)
@@ -2812,8 +2594,6 @@ async def sub_toggle_online_all(callback: CallbackQuery):
 
 @DP.callback_query(F.data.startswith("subonlinepage:"))
 async def sub_online_page(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     parts = callback.data.split(":", 1)
     try:
         page = int(parts[1])
@@ -2824,8 +2604,6 @@ async def sub_online_page(callback: CallbackQuery):
 
 @DP.callback_query(F.data.startswith("subonlineinfo:"))
 async def sub_online_info(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     parts = callback.data.split(":", 2)
     if len(parts) < 3:
         await safe_callback_answer(callback, "Ошибка")
@@ -2840,8 +2618,6 @@ async def sub_online_info(callback: CallbackQuery):
 
 @DP.callback_query(F.data.startswith("subonlineinfotoggle:"))
 async def sub_online_info_toggle(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     parts = callback.data.split(":", 2)
     if len(parts) < 3:
         await safe_callback_answer(callback, "Ошибка")
@@ -2871,8 +2647,6 @@ async def sub_online_info_toggle(callback: CallbackQuery):
 # Совместимость со старыми callback-кнопками, если они остались в открытом сообщении Telegram.
 @DP.callback_query(F.data.startswith("subonlinepage"))
 async def sub_online_page_legacy(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     raw = callback.data[len("subonlinepage"):]
     try:
         page = int(raw)
@@ -2883,8 +2657,6 @@ async def sub_online_page_legacy(callback: CallbackQuery):
 
 @DP.callback_query(F.data.startswith("sublivepage:"))
 async def sub_live_page(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     parts = callback.data.split(":", 1)
     try:
         page = int(parts[1])
@@ -2900,8 +2672,6 @@ async def sub_live_page(callback: CallbackQuery):
 
 @DP.callback_query(F.data.startswith("subliveinfo:"))
 async def sub_live_info(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     parts = callback.data.split(":", 2)
     if len(parts) < 3:
         await safe_callback_answer(callback, "Ошибка")
@@ -2916,8 +2686,6 @@ async def sub_live_info(callback: CallbackQuery):
 
 @DP.callback_query(F.data.startswith("subliveinfotoggle:"))
 async def sub_live_info_toggle(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     parts = callback.data.split(":", 2)
     if len(parts) < 3:
         await safe_callback_answer(callback, "Ошибка")
@@ -2950,8 +2718,6 @@ async def sub_live_info_toggle(callback: CallbackQuery):
 # Совместимость со старыми callback-кнопками.
 @DP.callback_query(F.data.startswith("sublivepage"))
 async def sub_live_page_legacy(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     raw = callback.data[len("sublivepage"):]
     try:
         page = int(raw)
@@ -2967,8 +2733,6 @@ async def sub_live_page_legacy(callback: CallbackQuery):
 
 @DP.callback_query(F.data == "subtoggleliveall")
 async def sub_toggle_live_all(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     uid = str(callback.from_user.id)
     user_data = get_user_sub(uid)
     city = user_data.get("city")
@@ -2986,8 +2750,6 @@ async def sub_toggle_live_all(callback: CallbackQuery):
 
 @DP.callback_query(F.data.startswith("subtogglelive"))
 async def sub_toggle_live(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     gid = callback.data[len("subtogglelive"):]
     group_name = LIVE_GROUP_ID_TO_NAME.get(gid)
     if not group_name:
@@ -3012,30 +2774,22 @@ async def sub_toggle_live(callback: CallbackQuery):
 
 @DP.callback_query(F.data == "settingsroot")
 async def settings_root_callback(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     user_data = get_user_sub(str(callback.from_user.id))
     await send_or_edit(callback, render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu(user_data))
 
 
 @DP.callback_query(F.data == "subsettingsonline")
 async def sub_settings_online(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     await settings_menu(callback, "online")
 
 
 @DP.callback_query(F.data == "subsettingslive")
 async def sub_settings_live(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     await settings_menu(callback, "live")
 
 
 @DP.callback_query(F.data.startswith("toggledaily:"))
 async def toggle_daily_summary(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     _, group_type = callback.data.split(":")
     uid = str(callback.from_user.id)
     user_data = get_user_sub(uid)
@@ -3047,8 +2801,6 @@ async def toggle_daily_summary(callback: CallbackQuery):
 
 @DP.callback_query(F.data.startswith("setdailyhour:"))
 async def set_daily_hour(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     _, group_type, hour = callback.data.split(":")
     uid = str(callback.from_user.id)
     user_data = get_user_sub(uid)
@@ -3060,8 +2812,6 @@ async def set_daily_hour(callback: CallbackQuery):
 
 @DP.callback_query(F.data.startswith("togglereminders:"))
 async def toggle_reminders_enabled(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     _, group_type = callback.data.split(":")
     uid = str(callback.from_user.id)
     user_data = get_user_sub(uid)
@@ -3073,8 +2823,6 @@ async def toggle_reminders_enabled(callback: CallbackQuery):
 
 @DP.callback_query(F.data.startswith("toggleremind:"))
 async def toggle_remind(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     _, group_type, minutes_raw = callback.data.split(":")
     try:
         minutes = int(minutes_raw)
@@ -3108,8 +2856,6 @@ async def toggle_remind(callback: CallbackQuery):
 
 @DP.callback_query(F.data.startswith("setremind:"))
 async def set_remind(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     _, group_type, option = callback.data.split(":")
     mapping = {"15": [15], "1": [60], "2": [120], "both": [60, 120], "15_1": [15, 60], "all": [15, 60, 120]}
     uid = str(callback.from_user.id)
@@ -3121,8 +2867,6 @@ async def set_remind(callback: CallbackQuery):
 
 @DP.callback_query(F.data == "onlinetoday")
 async def online_today(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     user_data = get_user_sub(str(callback.from_user.id))
     day_index = moscow_now().weekday()
     groups = get_online_by_day(day_index)
@@ -3133,8 +2877,6 @@ async def online_today(callback: CallbackQuery):
 
 @DP.callback_query(F.data == "onlinefull")
 async def online_full(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     await send_long_text(
         callback,
         "📋 Онлайн на всю неделю:\nВремя указано московское.",
@@ -3147,15 +2889,11 @@ async def online_full(callback: CallbackQuery):
 
 @DP.callback_query(F.data == "onlinechooseday")
 async def online_choose_day(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     await send_or_edit(callback, "📆 Выберите день:", reply_markup=get_days_keyboard("onlineday", "mainonline", "← К онлайн"))
 
 
 @DP.callback_query(F.data.startswith("onlineday"))
 async def online_show_day(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     day_index = int(callback.data[len("onlineday"):])
     user_data = get_user_sub(str(callback.from_user.id))
     groups = get_online_by_day(day_index)
@@ -3166,45 +2904,11 @@ async def online_show_day(callback: CallbackQuery):
 
 @DP.callback_query(F.data == "modelive")
 async def back_to_live(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     await send_or_edit(callback, "🏙 <b>Живые встречи</b>\n\nПроходят очно в выбранном городе.", parse_mode=HTML_MODE, reply_markup=build_live_root_keyboard(get_user_sub(str(callback.from_user.id))))
-
-
-@DP.callback_query(F.data == "livesearchcity")
-async def live_search_city_start(callback: CallbackQuery, state: FSMContext):
-    if await reject_group_callback(callback):
-        return
-    await state.set_state(LiveGroupSearch.waiting_for_city)
-    await send_or_edit(callback, "🔍 Введите город:", reply_markup=back_markup("← К городам", "modelive"))
-
-
-@DP.message(StateFilter(LiveGroupSearch.waiting_for_city))
-async def live_search_city_handle(message: Message, state: FSMContext):
-    if not is_private_message(message):
-        await reject_group_message(message)
-        return
-    await state.clear()
-    matched = get_searchable_cities((message.text or "").strip())
-    if not matched:
-        await message.answer("Город не найден.", reply_markup=back_markup("← К странам", "livechoosecountry"))
-        return
-    if len(matched) == 1:
-        country, city = matched[0]
-        await message.answer(f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>", parse_mode=HTML_MODE, reply_markup=live_period_keyboard(city, country))
-        return
-    builder = InlineKeyboardBuilder()
-    for country, city in matched[:20]:
-        builder.button(text=get_country_city_label(country, city), callback_data=f"livecity{get_location_id(city, country)}")
-    builder.adjust(1)
-    builder.row(InlineKeyboardButton(text="← К странам", callback_data="livechoosecountry"))
-    await message.answer("🔍 Уточните город:", reply_markup=builder.as_markup())
 
 
 @DP.callback_query(F.data.startswith("livecity"))
 async def process_city(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     cid = callback.data[len("livecity"):]
     country, city = resolve_location_id(cid)
     await send_or_edit(callback, f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>", parse_mode=HTML_MODE, reply_markup=live_period_keyboard(city, country))
@@ -3212,8 +2916,6 @@ async def process_city(callback: CallbackQuery):
 
 @DP.callback_query(F.data.startswith("livetoday"))
 async def live_today(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     cid = callback.data[len("livetoday"):]
     country, city = resolve_location_id(cid)
     user_data = get_user_sub(str(callback.from_user.id))
@@ -3226,8 +2928,6 @@ async def live_today(callback: CallbackQuery):
 
 @DP.callback_query(F.data.startswith("liveweek"))
 async def live_week(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     cid = callback.data[len("liveweek"):]
     country, city = resolve_location_id(cid)
     await send_long_text(
@@ -3241,8 +2941,6 @@ async def live_week(callback: CallbackQuery):
 
 @DP.callback_query(F.data.startswith("liveperiod"))
 async def live_period(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     cid = callback.data[len("liveperiod"):]
     country, city = resolve_location_id(cid)
     await send_or_edit(callback, f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>", parse_mode=HTML_MODE, reply_markup=live_period_keyboard(city, country))
@@ -3250,8 +2948,6 @@ async def live_period(callback: CallbackQuery):
 
 @DP.callback_query(F.data.startswith("livechooseday"))
 async def live_choose_day(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     cid = callback.data[len("livechooseday"):]
     country, city = resolve_location_id(cid)
     await send_or_edit(
@@ -3264,8 +2960,6 @@ async def live_choose_day(callback: CallbackQuery):
 
 @DP.callback_query(F.data.startswith("liveday"))
 async def live_show_day(callback: CallbackQuery):
-    if await reject_group_callback(callback):
-        return
     payload = callback.data[len("liveday"):]
     cid, day_index_str = payload.rsplit("_", 1)
     country, city = resolve_location_id(cid)
@@ -3280,26 +2974,17 @@ async def live_show_day(callback: CallbackQuery):
 @DP.message(F.text == "🌐 Онлайн")
 @DP.message(F.text == "🌐 Онлайн-встречи")
 async def btn_online(message: Message):
-    if not is_private_message(message):
-        await reject_group_message(message)
-        return
     await message.answer("🌐 <b>Онлайн-встречи</b>\n\nПроходят в Telegram / Zoom / MAX.\nВремя указано московское.", parse_mode=HTML_MODE, reply_markup=build_online_menu_keyboard())
 
 
 @DP.message(F.text == "🏙 Живые")
 @DP.message(F.text == "🏙 Живые встречи")
 async def btn_live(message: Message):
-    if not is_private_message(message):
-        await reject_group_message(message)
-        return
     await message.answer("🏙 <b>Живые встречи</b>\n\nПроходят очно в выбранном городе.", parse_mode=HTML_MODE, reply_markup=build_live_root_keyboard(get_user_sub(str(message.from_user.id))))
 
 
 @DP.message(F.text == "🔔 Подписки")
 async def btn_subscriptions(message: Message):
-    if not is_private_message(message):
-        await reject_group_message(message)
-        return
     await show_sub_main(message)
 
 
@@ -3307,9 +2992,6 @@ async def btn_subscriptions(message: Message):
 @DP.message(F.text == "🔔 Мои подписки")
 @DP.message(F.text == "⭐ Мои группы")
 async def btn_my_groups(message: Message):
-    if not is_private_message(message):
-        await reject_group_message(message)
-        return
     await message.answer(
         render_my_groups_text(get_user_sub(str(message.from_user.id))),
         parse_mode=HTML_MODE,
@@ -3319,51 +3001,13 @@ async def btn_my_groups(message: Message):
 
 @DP.message(F.text == "⚙️ Настройки")
 async def btn_settings(message: Message):
-    if not is_private_message(message):
-        await reject_group_message(message)
-        return
     user_data = get_user_sub(str(message.from_user.id))
     await message.answer(render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu(user_data))
-
-
-@DP.message(F.text == "Ещё")
-async def btn_more(message: Message):
-    if not is_private_message(message):
-        await reject_group_message(message)
-        return
-    await message.answer("<b>Ещё</b>", parse_mode=HTML_MODE, reply_markup=build_more_menu_keyboard())
-
-
-@DP.message(F.text == "Помощь")
-async def btn_help(message: Message):
-    if not is_private_message(message):
-        await reject_group_message(message)
-        return
-    await message.answer(
-        HELP_TEXT,
-        parse_mode=HTML_MODE,
-        reply_markup=back_markup("← Ещё", "mainmore"),
-    )
-
-
-@DP.message(F.text == "💫 Фраза поддержки")
-async def btn_slogan(message: Message):
-    if not is_private_message(message):
-        await reject_group_message(message)
-        return
-    await message.answer(
-        f"<b>Фраза поддержки</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
-        parse_mode=HTML_MODE,
-        reply_markup=back_markup("← Ещё", "mainmore"),
-    )
 
 
 @DP.message(F.text == "Настройки уведомлений")
 @DP.message(F.text == "Настройки подписок")
 async def btn_notification_settings(message: Message):
-    if not is_private_message(message):
-        await reject_group_message(message)
-        return
     user_data = get_user_sub(str(message.from_user.id))
     await message.answer(render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu(user_data))
 
@@ -3371,9 +3015,6 @@ async def btn_notification_settings(message: Message):
 @DP.message(F.text == "📩 Контакты")
 @DP.message(F.text == "Контакты")
 async def btn_contacts(message: Message):
-    if not is_private_message(message):
-        await reject_group_message(message)
-        return
     await message.answer(
         CONTACTS_TEXT,
         parse_mode=HTML_MODE,
@@ -3384,9 +3025,6 @@ async def btn_contacts(message: Message):
 
 @DP.message(F.text == "❌ Отписаться от всего")
 async def btn_unsubscribe_all(message: Message):
-    if not is_private_message(message):
-        await reject_group_message(message)
-        return
     remove_subscriber(str(message.from_user.id))
     await message.answer("🔕 Вы отписались от всех уведомлений.", reply_markup=REPLY_MAIN_MENU)
 
@@ -3394,18 +3032,12 @@ async def btn_unsubscribe_all(message: Message):
 @DP.message(F.text == "🔎 Найти группу или город")
 @DP.message(F.text == "🔍 Найти группу")
 async def btn_search_group(message: Message, state: FSMContext):
-    if not is_private_message(message):
-        await reject_group_message(message)
-        return
     await state.set_state(GroupNameSearch.waiting_for_name)
     await message.answer("Введите название группы или город:", reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
 
 
 @DP.message()
 async def fallback(message: Message, state: FSMContext):
-    if not is_private_message(message):
-        await reject_group_message(message)
-        return
     if await state.get_state() is None:
         await message.answer("Используйте кнопки меню 👇", reply_markup=REPLY_MAIN_MENU)
 
