@@ -315,7 +315,7 @@ def normalize_remind_before(value) -> List[int]:
             iv = int(item)
         except Exception:
             continue
-        if iv in {60, 120} and iv not in result:
+        if iv in {15, 60, 120} and iv not in result:
             result.append(iv)
     return sorted(result) or DEFAULT_REMIND_BEFORE.copy()
 
@@ -1499,7 +1499,6 @@ def get_days_keyboard(prefix: str, back_callback: str, back_text: str = "← Н�
 
 def build_subscriptions_menu() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="Мои подписки", callback_data="mainmygroups"))
     builder.row(InlineKeyboardButton(text="Выбрать онлайн-группы", callback_data="subonline"))
     builder.row(InlineKeyboardButton(text="Выбрать живые группы", callback_data="sublive"))
     builder.row(InlineKeyboardButton(text="Настройки подписок", callback_data="settingsroot"))
@@ -1519,12 +1518,54 @@ def build_my_groups_menu() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def build_settings_root_menu() -> InlineKeyboardMarkup:
+def _remind_option_label(settings: dict, values: List[int], label: str) -> str:
+    return f"✅ {label}" if set(settings.get("remind_before", [])) == set(values) else label
+
+
+def build_settings_root_menu(user_data: Optional[dict] = None) -> InlineKeyboardMarkup:
+    user_data = user_data or {}
+    online_settings = get_online_settings(user_data) if user_data else normalize_settings(None, DEFAULT_DAILY_HOUR, DEFAULT_REMIND_BEFORE)
+    live_settings = get_live_settings(user_data) if user_data else normalize_settings(None, DEFAULT_DAILY_HOUR, DEFAULT_REMIND_BEFORE)
+
     builder = InlineKeyboardBuilder()
+
+    builder.row(InlineKeyboardButton(
+        text="🌐 Отключить онлайн-сводку" if online_settings.get("daily_enabled", True) else "🌐 Включить онлайн-сводку",
+        callback_data="toggledaily:online",
+    ))
+    if online_settings.get("daily_enabled", True):
+        for hour in DAY_HOUR_CHOICES:
+            checked = "✅ " if online_settings["daily_hour"] == hour else ""
+            builder.button(text=f"🌐 {checked}{hour:02d}:00", callback_data=f"setdailyhour:online:{hour}")
+        builder.adjust(1, len(DAY_HOUR_CHOICES))
+
+    builder.row(InlineKeyboardButton(text="🌐 Напоминания онлайн", callback_data="noop"))
     builder.row(
-        InlineKeyboardButton(text="🌐 Онлайн", callback_data="subsettingsonline"),
-        InlineKeyboardButton(text="🏙 Живые", callback_data="subsettingslive"),
+        InlineKeyboardButton(text=_remind_option_label(online_settings, [15], "За 15 минут"), callback_data="setremind:online:15"),
+        InlineKeyboardButton(text=_remind_option_label(online_settings, [60], "За 1 час"), callback_data="setremind:online:1"),
     )
+    builder.row(
+        InlineKeyboardButton(text=_remind_option_label(online_settings, [120], "За 2 часа"), callback_data="setremind:online:2"),
+        InlineKeyboardButton(text=_remind_option_label(online_settings, [60, 120], "За 1 и 2 часа"), callback_data="setremind:online:both"),
+    )
+
+    builder.row(InlineKeyboardButton(
+        text="🏙 Отключить живую сводку" if live_settings.get("daily_enabled", True) else "🏙 Включить живую сводку",
+        callback_data="toggledaily:live",
+    ))
+    if live_settings.get("daily_enabled", True):
+        for hour in DAY_HOUR_CHOICES:
+            checked = "✅ " if live_settings["daily_hour"] == hour else ""
+            builder.button(text=f"🏙 {checked}{hour:02d}:00", callback_data=f"setdailyhour:live:{hour}")
+        builder.adjust(1, len(DAY_HOUR_CHOICES))
+
+    builder.row(InlineKeyboardButton(text="🏙 Напоминания живых встреч", callback_data="noop"))
+    builder.row(
+        InlineKeyboardButton(text=_remind_option_label(live_settings, [60], "За 1 час"), callback_data="setremind:live:1"),
+        InlineKeyboardButton(text=_remind_option_label(live_settings, [120], "За 2 часа"), callback_data="setremind:live:2"),
+        InlineKeyboardButton(text=_remind_option_label(live_settings, [60, 120], "За 1 и 2 часа"), callback_data="setremind:live:both"),
+    )
+
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
@@ -1532,10 +1573,20 @@ def build_settings_root_menu() -> InlineKeyboardMarkup:
 
 def format_remind_label(remind_before: Iterable[int]) -> str:
     remind_set = set(remind_before)
-    if remind_set == {60, 120}:
-        return "за 1 и 2 часа"
+    if remind_set == {15}:
+        return "за 15 минут"
+    if remind_set == {60}:
+        return "за 1 час"
     if remind_set == {120}:
         return "за 2 часа"
+    if remind_set == {60, 120}:
+        return "за 1 и 2 часа"
+    if remind_set == {15, 60}:
+        return "за 15 минут и 1 час"
+    if remind_set == {15, 120}:
+        return "за 15 минут и 2 часа"
+    if remind_set == {15, 60, 120}:
+        return "за 15 минут, 1 и 2 часа"
     return "за 1 час"
 
 
@@ -1585,11 +1636,23 @@ def render_my_groups_text(user_data: dict) -> str:
     return "\n".join(lines)
 
 
+def _daily_settings_text(settings: dict) -> str:
+    if settings.get("daily_enabled", True):
+        return f"сводка включена, {int(settings.get('daily_hour', DEFAULT_DAILY_HOUR)):02d}:00"
+    return "сводка выключена"
+
+
 def render_settings_root_text(user_data: dict) -> str:
+    online_settings = get_online_settings(user_data)
+    live_settings = get_live_settings(user_data)
     return (
         "⚙️ <b>Настройки подписок</b>\n\n"
-        f"{format_settings_line('🌐 Онлайн', get_online_settings(user_data))}\n"
-        f"{format_settings_line('🏙 Живые', get_live_settings(user_data))}"
+        "🌐 <b>Онлайн</b>\n"
+        f"Утренняя сводка: <b>{_daily_settings_text(online_settings)}</b>\n"
+        f"Напоминания: <b>{format_remind_label(online_settings.get('remind_before', DEFAULT_REMIND_BEFORE))}</b>\n\n"
+        "🏙 <b>Живые</b>\n"
+        f"Утренняя сводка: <b>{_daily_settings_text(live_settings)}</b>\n"
+        f"Напоминания: <b>{format_remind_label(live_settings.get('remind_before', DEFAULT_REMIND_BEFORE))}</b>"
     )
 
 
@@ -1968,11 +2031,13 @@ def live_group_details_block(group: dict, user_data: dict) -> List[str]:
     ]
 
 async def show_sub_main(target: CallbackQuery | Message):
-    text = (
-        "🔔 <b>Подписки</b>\n\n"
-        "Здесь можно выбрать группы, посмотреть свои подписки и настроить уведомления."
+    user_data = get_user_sub(str(target.from_user.id))
+    await send_or_edit(
+        target,
+        render_my_groups_text(user_data),
+        parse_mode=HTML_MODE,
+        reply_markup=build_subscriptions_menu(),
     )
-    await send_or_edit(target, text, parse_mode=HTML_MODE, reply_markup=build_subscriptions_menu())
 
 
 def compact_time_only_for_button(time_text: str) -> str:
@@ -2510,7 +2575,7 @@ async def main_sub_callback(callback: CallbackQuery):
 @DP.callback_query(F.data == "mainsettings")
 async def main_settings_callback(callback: CallbackQuery):
     user_data = get_user_sub(str(callback.from_user.id))
-    await send_or_edit(callback, render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu())
+    await send_or_edit(callback, render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu(user_data))
 
 
 @DP.callback_query(F.data == "mainmygroups")
@@ -2791,7 +2856,7 @@ async def sub_toggle_live(callback: CallbackQuery):
 @DP.callback_query(F.data == "settingsroot")
 async def settings_root_callback(callback: CallbackQuery):
     user_data = get_user_sub(str(callback.from_user.id))
-    await send_or_edit(callback, render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu())
+    await send_or_edit(callback, render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu(user_data))
 
 
 @DP.callback_query(F.data == "subsettingsonline")
@@ -2812,7 +2877,8 @@ async def toggle_daily_summary(callback: CallbackQuery):
     settings = user_data[f"{group_type}_settings"]
     settings["daily_enabled"] = not settings.get("daily_enabled", True)
     set_user_sub(uid, user_data)
-    await settings_menu(callback, group_type)
+    user_data = get_user_sub(str(callback.from_user.id))
+    await send_or_edit(callback, render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu(user_data))
 
 
 @DP.callback_query(F.data.startswith("setdailyhour:"))
@@ -2823,18 +2889,20 @@ async def set_daily_hour(callback: CallbackQuery):
     user_data[f"{group_type}_settings"]["daily_hour"] = int(hour)
     user_data[f"{group_type}_settings"]["daily_enabled"] = True
     set_user_sub(uid, user_data)
-    await settings_menu(callback, group_type)
+    user_data = get_user_sub(str(callback.from_user.id))
+    await send_or_edit(callback, render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu(user_data))
 
 
 @DP.callback_query(F.data.startswith("setremind:"))
 async def set_remind(callback: CallbackQuery):
     _, group_type, option = callback.data.split(":")
-    mapping = {"1": [60], "2": [120], "both": [60, 120]}
+    mapping = {"15": [15], "1": [60], "2": [120], "both": [60, 120], "15_1": [15, 60], "all": [15, 60, 120]}
     uid = str(callback.from_user.id)
     user_data = get_user_sub(uid)
     user_data[f"{group_type}_settings"]["remind_before"] = mapping.get(option, [60])
     set_user_sub(uid, user_data)
-    await settings_menu(callback, group_type)
+    user_data = get_user_sub(str(callback.from_user.id))
+    await send_or_edit(callback, render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu(user_data))
 
 
 @DP.callback_query(F.data == "onlinetoday")
@@ -2999,7 +3067,7 @@ async def btn_my_groups(message: Message):
 @DP.message(F.text == "⚙️ Настройки")
 async def btn_settings(message: Message):
     user_data = get_user_sub(str(message.from_user.id))
-    await message.answer(render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu())
+    await message.answer(render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu(user_data))
 
 
 @DP.message(F.text == "Ещё")
@@ -3029,7 +3097,7 @@ async def btn_slogan(message: Message):
 @DP.message(F.text == "Настройки подписок")
 async def btn_notification_settings(message: Message):
     user_data = get_user_sub(str(message.from_user.id))
-    await message.answer(render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu())
+    await message.answer(render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu(user_data))
 
 
 @DP.message(F.text == "📩 Контакты")
