@@ -2359,15 +2359,19 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
     ))
 
     if daily_enabled:
+        hour_buttons = []
         for hour in DAY_HOUR_CHOICES:
-            checked = "✅ " if settings["daily_hour"] == hour else ""
-            builder.button(text=f"{checked}{hour:02d}:00", callback_data=f"setdailyhour:{prefix}:{hour}")
-        builder.adjust(1, len(DAY_HOUR_CHOICES))
+            # Короткий текст, чтобы кнопки не уезжали за границы экрана.
+            checked = "✓" if settings["daily_hour"] == hour else ""
+            label = f"{checked}{hour:02d}:00" if checked else f"{hour:02d}:00"
+            hour_buttons.append(InlineKeyboardButton(text=label, callback_data=f"setdailyhour:{prefix}:{hour}"))
+        builder.row(*hour_buttons[:3])
+        builder.row(*hour_buttons[3:])
 
     builder.row(InlineKeyboardButton(text="⏰ Напоминания", callback_data="noop"))
     if is_online:
         builder.row(
-            InlineKeyboardButton(text=_remind_option_label(settings, [15], "За 15 минут"), callback_data="setremind:online:15"),
+            InlineKeyboardButton(text=_remind_option_label(settings, [15], "За 15 мин"), callback_data="setremind:online:15"),
             InlineKeyboardButton(text=_remind_option_label(settings, [60], "За 1 час"), callback_data="setremind:online:1"),
         )
         builder.row(
