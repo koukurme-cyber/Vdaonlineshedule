@@ -247,6 +247,10 @@ add_online_group(range(7), "09:00", "Свобода", "https://t.me/vda_svoboda"
 
 add_online_group([2, 4, 5], "13:00", "Начало (MAX)", "https://max.ru/join/K1vR_TmHfgSBKnKR9DT04dX1vO81a3GuyBP3kc0fsio")
 
+# «По шагам Тони А.» теперь также проводится по пятницам в 19:00.
+add_online_group([4], "19:00", "По шагам Тони А.", "https://t.me/+ajasg4oH0SU3MjFi")
+
+
 
 class LiveGroupSearch(StatesGroup):
     waiting_for_city = State()
@@ -2378,10 +2382,6 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
         builder.row(*hour_buttons[3:])
 
     remind_enabled = settings.get("remind_enabled", True)
-    builder.row(InlineKeyboardButton(
-        text="Отключить напоминания" if remind_enabled else "Включить напоминания",
-        callback_data=f"togglereminders:{prefix}",
-    ))
 
     if remind_enabled:
         builder.row(InlineKeyboardButton(text="⏰ Напоминания", callback_data="noop"))
@@ -2402,6 +2402,11 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
                 remind_toggle_button(60, "За 1 час"),
                 remind_toggle_button(120, "За 2 часа"),
             )
+
+    builder.row(InlineKeyboardButton(
+        text="Отключить напоминания" if remind_enabled else "Включить напоминания",
+        callback_data=f"togglereminders:{prefix}",
+    ))
 
     builder.row(InlineKeyboardButton(text="← К настройкам", callback_data="settingsroot"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
