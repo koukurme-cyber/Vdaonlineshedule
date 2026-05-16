@@ -866,15 +866,45 @@ def format_online_schedule(name: str, max_len: Optional[int] = None) -> str:
     if not occurrences:
         return "расписание не указано"
 
-    by_time: Dict[str, List[int]] = {}
+    # Если по всем дням один и тот же набор времени — показываем компактно:
+    # ежедневно 09:00, 21:00
+    times_by_day: Dict[int, List[str]] = {}
     for day_index, time_str, _ in occurrences:
-        by_time.setdefault(time_str, []).append(day_index)
+        times_by_day.setdefault(day_index, []).append(time_str)
+    for day_index in times_by_day:
+        times_by_day[day_index] = sorted(set(times_by_day[day_index]))
+
+    if set(times_by_day.keys()) == set(range(7)):
+        first_times = times_by_day.get(0, [])
+        if first_times and all(times_by_day.get(day) == first_times for day in range(7)):
+            text = f"ежедневно {', '.join(first_times)}"
+            if max_len and len(text) > max_len:
+                text = text[:max_len].rsplit(";", 1)[0].rstrip() or text[:max_len].rstrip()
+                text += "…"
+            return text
+
+    # В остальных случаях порядок важнее группировки по времени:
+    # Пн 18:00; Вт 18:00; Ср 09:00; ...
+    # Но подряд идущие дни с одинаковым временем склеиваем:
+    # Пн, Вт 18:00
+    slots = sorted(
+        ((day_index, time_str) for day_index, time_str, _ in occurrences),
+        key=lambda x: (x[0], x[1]),
+    )
+
+    groups: List[Tuple[List[int], str]] = []
+    for day_index, time_str in slots:
+        if groups and groups[-1][1] == time_str and day_index == groups[-1][0][-1] + 1:
+            groups[-1][0].append(day_index)
+        else:
+            groups.append(([day_index], time_str))
 
     parts = []
-    for time_str, day_indexes in sorted(by_time.items(), key=lambda x: (x[0], x[1])):
-        day_text = format_day_list(day_indexes)
+    for days, time_str in groups:
+        day_text = format_day_list(days)
         if day_text:
             parts.append(f"{day_text} {time_str}")
+
     text = "; ".join(parts) if parts else "расписание не указано"
     if max_len and len(text) > max_len:
         text = text[:max_len].rsplit(";", 1)[0].rstrip() or text[:max_len].rstrip()
