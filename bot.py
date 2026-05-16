@@ -2392,16 +2392,12 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
             return InlineKeyboardButton(text=f"{mark}{label}", callback_data=f"toggleremind:{prefix}:{minutes}")
 
         if is_online:
-            builder.row(
-                remind_toggle_button(15, "За 15 мин"),
-                remind_toggle_button(60, "За 1 час"),
-            )
+            builder.row(remind_toggle_button(15, "За 15 мин"))
+            builder.row(remind_toggle_button(60, "За 1 час"))
             builder.row(remind_toggle_button(120, "За 2 часа"))
         else:
-            builder.row(
-                remind_toggle_button(60, "За 1 час"),
-                remind_toggle_button(120, "За 2 часа"),
-            )
+            builder.row(remind_toggle_button(60, "За 1 час"))
+            builder.row(remind_toggle_button(120, "За 2 часа"))
 
     builder.row(InlineKeyboardButton(text="← К настройкам", callback_data="settingsroot"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
