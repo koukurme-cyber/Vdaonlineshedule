@@ -1725,13 +1725,50 @@ def build_live_single_reminder(name: str, address: str, start: str, is_work_meet
 
 
 def build_live_multi_reminder(start: str, items: List[Tuple[str, str, bool]], minutes_before: int) -> str:
-    before_text = "за час" if minutes_before == 60 else "за два часа"
+    before_text = "через час" if minutes_before == 60 else "через два часа"
     lines = [f"Напоминание: {before_text} начнутся живые группы.", "", f"Начало: <b>{start}</b>", ""]
     for name, address, is_work_meeting in sorted(items, key=lambda x: x[0].lower()):
         label = " 🔧" if is_work_meeting else ""
         lines.append(f"• <b>{escape_html(name)}</b>{label} — {escape_html(address)}")
     return "\n".join(lines)
 
+
+
+
+def build_combined_reminder(start: str, online_items: List[Tuple[str, str]], live_items: List[Tuple[str, str, bool]], minutes_before: int) -> str:
+    """One reminder for all subscribed groups that start at the same time."""
+    before_text = "через час" if minutes_before == 60 else "через два часа"
+    total = len(online_items) + len(live_items)
+
+    if online_items and live_items:
+        header = f"Напоминание: {before_text} начнутся группы."
+    elif online_items:
+        header = (
+            f"Напоминание: {before_text} начнётся онлайн-группа."
+            if total == 1
+            else f"Напоминание: {before_text} начнутся онлайн-группы."
+        )
+    else:
+        header = (
+            f"Напоминание: {before_text} начнётся живая группа."
+            if total == 1
+            else f"Напоминание: {before_text} начнутся живые группы."
+        )
+
+    lines = [header, "", f"Начало: <b>{start}</b>"]
+
+    if online_items:
+        lines.extend(["", "🌐 <b>Онлайн</b>"])
+        for name, url in sorted(online_items, key=lambda x: x[0].lower()):
+            lines.append(f"• <a href=\"{url}\"><b>{escape_html(name)}</b></a>")
+
+    if live_items:
+        lines.extend(["", "🏙 <b>Живые</b>"])
+        for name, address, is_work_meeting in sorted(live_items, key=lambda x: x[0].lower()):
+            label = " 🔧" if is_work_meeting else ""
+            lines.append(f"• <b>{escape_html(name)}</b>{label} — {escape_html(address)}")
+
+    return "\n".join(lines)
 
 def get_online_settings(user_data: dict) -> dict:
     return user_data["online_settings"]
@@ -1747,47 +1784,44 @@ def collect_due_reminders(user_data: dict, now_dt: datetime):
     now_minutes = now_dt.hour * 60 + now_dt.minute
     reminders_meta = user_data.setdefault("meta", {}).setdefault("last_reminders", {})
 
-    online_due: Dict[Tuple[str, int], List[Tuple[str, str]]] = {}
+    # Combined by (start time, minutes_before), regardless of group type.
+    # This prevents duplicate reminders when online and live groups start at the same time.
+    combined_due: Dict[Tuple[str, int], dict] = {}
+
     for time_str, name, url in get_online_by_day(now_dt.weekday()):
         if not is_user_subscribed_to_online(user_data, name):
             continue
         for minutes_before in get_online_settings(user_data)["remind_before"]:
             if time_to_minutes(time_str) - now_minutes == minutes_before:
-                online_due.setdefault((time_str, minutes_before), []).append((name, url))
-
-    for (time_str, minutes_before), items in online_due.items():
-        if len(items) == 1:
-            name, url = items[0]
-            key = build_reminder_key("online", name, today_str, time_str, minutes_before)
-            if reminders_meta.get(key) != today_str:
-                due.append((key, build_online_single_reminder(name, url, time_str, minutes_before), True))
-        else:
-            key = build_reminder_key("online_multi", "|".join(sorted(name for name, _ in items)), today_str, time_str, minutes_before)
-            if reminders_meta.get(key) != today_str:
-                due.append((key, build_online_multi_reminder(time_str, items, minutes_before), True))
+                bucket = combined_due.setdefault((time_str, minutes_before), {"online": [], "live": []})
+                bucket["online"].append((name, url))
 
     city = user_data.get("city")
     if city:
-        live_due: Dict[Tuple[str, int], List[Tuple[str, str, bool]]] = {}
         for name, address, start, _, is_work_meeting in get_live_groups_for_day(city, now_dt.weekday(), user_data.get("country")):
             if not is_user_subscribed_to_live(user_data, name):
                 continue
             for minutes_before in get_live_settings(user_data)["remind_before"]:
                 if time_to_minutes(start) - now_minutes == minutes_before:
-                    live_due.setdefault((start, minutes_before), []).append((name, address, is_work_meeting))
+                    bucket = combined_due.setdefault((start, minutes_before), {"online": [], "live": []})
+                    bucket["live"].append((name, address, is_work_meeting))
 
-        for (start, minutes_before), items in live_due.items():
-            if len(items) == 1:
-                name, address, is_work_meeting = items[0]
-                key = build_reminder_key("live", name, today_str, start, minutes_before)
-                if reminders_meta.get(key) != today_str:
-                    due.append((key, build_live_single_reminder(name, address, start, is_work_meeting, minutes_before), False))
-            else:
-                key = build_reminder_key("live_multi", "|".join(sorted(name for name, _, _ in items)), today_str, start, minutes_before)
-                if reminders_meta.get(key) != today_str:
-                    due.append((key, build_live_multi_reminder(start, items, minutes_before), False))
+    for (start, minutes_before), payload in sorted(combined_due.items(), key=lambda x: (x[0][0], x[0][1])):
+        online_items = payload.get("online", [])
+        live_items = payload.get("live", [])
+        names_for_key = [f"o:{name}" for name, _ in online_items] + [f"l:{name}" for name, _, _ in live_items]
+        key = build_reminder_key(
+            "combined",
+            "|".join(sorted(names_for_key)),
+            today_str,
+            start,
+            minutes_before,
+        )
+        if reminders_meta.get(key) != today_str:
+            disable_preview = bool(online_items)
+            due.append((key, build_combined_reminder(start, online_items, live_items, minutes_before), disable_preview))
+
     return due
-
 
 def cleanup_old_reminders(user_data: dict, now_dt: datetime):
     cutoff = (now_dt.date() - timedelta(days=3)).strftime("%Y-%m-%d")
