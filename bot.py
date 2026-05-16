@@ -348,9 +348,11 @@ def normalize_settings(settings: Optional[dict], fallback_hour: int, fallback_re
     if daily_hour not in DAY_HOUR_CHOICES:
         daily_hour = DEFAULT_DAILY_HOUR
     daily_enabled = settings.get("daily_enabled", settings.get("dailyenabled", True))
+    remind_enabled = settings.get("remind_enabled", settings.get("remindenabled", True))
     return {
         "daily_enabled": bool(daily_enabled),
         "daily_hour": daily_hour,
+        "remind_enabled": bool(remind_enabled),
         "remind_before": normalize_remind_before(settings.get("remind_before", fallback_remind)),
     }
 
@@ -1398,7 +1400,7 @@ def build_online_menu_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="📅 Сегодня", callback_data="onlinetoday"),
-        InlineKeyboardButton(text="📋 Вся неделя", callback_data="onlinefull"),
+        InlineKeyboardButton(text="📋 Неделя", callback_data="onlinefull"),
     )
     builder.row(InlineKeyboardButton(text="📆 Выбрать день", callback_data="onlinechooseday"))
     builder.row(InlineKeyboardButton(text="🔎 Найти группу или город", callback_data="searchgroup"))
@@ -1479,7 +1481,7 @@ def live_period_keyboard(city: str, country: Optional[str] = None) -> InlineKeyb
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="📅 Сегодня", callback_data=f"livetoday{cid}"),
-        InlineKeyboardButton(text="📋 Вся неделя", callback_data=f"liveweek{cid}"),
+        InlineKeyboardButton(text="📋 Неделя", callback_data=f"liveweek{cid}"),
     )
     builder.row(InlineKeyboardButton(text="📆 Выбрать день", callback_data=f"livechooseday{cid}"))
     builder.row(InlineKeyboardButton(text="← К городам", callback_data=f"livecountry{COUNTRY_TO_ID[country]}" if country in COUNTRY_TO_ID else "livechoosecountry"))
@@ -1524,10 +1526,8 @@ def _remind_option_label(settings: dict, values: List[int], label: str) -> str:
 
 def build_settings_root_menu(user_data: Optional[dict] = None) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="🌐 Настроить онлайн", callback_data="subsettingsonline"),
-        InlineKeyboardButton(text="🏙 Настроить живые", callback_data="subsettingslive"),
-    )
+    builder.row(InlineKeyboardButton(text="🌐 Настроить онлайн", callback_data="subsettingsonline"))
+    builder.row(InlineKeyboardButton(text="🏙 Настроить живые", callback_data="subsettingslive"))
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
@@ -1558,7 +1558,11 @@ def format_settings_line(label: str, settings: dict) -> str:
         daily_text = f"сводка в {int(settings.get('daily_hour', DEFAULT_DAILY_HOUR)):02d}:00"
     else:
         daily_text = "сводка выключена"
-    return f"{label} — {daily_text}, напоминания {format_remind_label(settings.get('remind_before', DEFAULT_REMIND_BEFORE))}"
+    if settings.get("remind_enabled", True):
+        remind_text = f"напоминания {format_remind_label(settings.get('remind_before', DEFAULT_REMIND_BEFORE))}"
+    else:
+        remind_text = "напоминания выключены"
+    return f"{label} — {daily_text}, {remind_text}"
 
 
 def render_my_groups_text(user_data: dict) -> str:
@@ -1611,10 +1615,10 @@ def render_settings_root_text(user_data: dict) -> str:
         "⚙️ <b>Настройки подписок</b>\n\n"
         "🌐 <b>Онлайн</b>\n"
         f"Утренняя сводка: <b>{_daily_settings_text(online_settings)}</b>\n"
-        f"Напоминания: <b>{format_remind_label(online_settings.get('remind_before', DEFAULT_REMIND_BEFORE))}</b>\n\n"
+        f"Напоминания: <b>{format_remind_label(online_settings.get('remind_before', DEFAULT_REMIND_BEFORE)) if online_settings.get('remind_enabled', True) else 'выключены'}</b>\n\n"
         "🏙 <b>Живые</b>\n"
         f"Утренняя сводка: <b>{_daily_settings_text(live_settings)}</b>\n"
-        f"Напоминания: <b>{format_remind_label(live_settings.get('remind_before', DEFAULT_REMIND_BEFORE))}</b>"
+        f"Напоминания: <b>{format_remind_label(live_settings.get('remind_before', DEFAULT_REMIND_BEFORE)) if live_settings.get('remind_enabled', True) else 'выключены'}</b>"
     )
 
 
@@ -1813,8 +1817,13 @@ def collect_due_reminders(user_data: dict, now_dt: datetime):
     # This prevents duplicate reminders when online and live groups start at the same time.
     combined_due: Dict[Tuple[str, int], dict] = {}
 
+    if not get_online_settings(user_data).get("remind_enabled", True):
+        online_reminders_enabled = False
+    else:
+        online_reminders_enabled = True
+
     for time_str, name, url in get_online_by_day(now_dt.weekday()):
-        if not is_user_subscribed_to_online(user_data, name):
+        if not online_reminders_enabled or not is_user_subscribed_to_online(user_data, name):
             continue
         for minutes_before in get_online_settings(user_data)["remind_before"]:
             if time_to_minutes(time_str) - now_minutes == minutes_before:
@@ -1822,7 +1831,7 @@ def collect_due_reminders(user_data: dict, now_dt: datetime):
                 bucket["online"].append((name, url))
 
     city = user_data.get("city")
-    if city:
+    if city and get_live_settings(user_data).get("remind_enabled", True):
         for name, address, start, _, is_work_meeting in get_live_groups_for_day(city, now_dt.weekday(), user_data.get("country")):
             if not is_user_subscribed_to_live(user_data, name):
                 continue
@@ -2368,24 +2377,31 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
         builder.row(*hour_buttons[:3])
         builder.row(*hour_buttons[3:])
 
-    builder.row(InlineKeyboardButton(text="⏰ Напоминания", callback_data="noop"))
-    remind_set = set(settings.get("remind_before", DEFAULT_REMIND_BEFORE))
+    remind_enabled = settings.get("remind_enabled", True)
+    builder.row(InlineKeyboardButton(
+        text="Отключить напоминания" if remind_enabled else "Включить напоминания",
+        callback_data=f"togglereminders:{prefix}",
+    ))
 
-    def remind_toggle_button(minutes: int, label: str) -> InlineKeyboardButton:
-        mark = "✅ " if minutes in remind_set else ""
-        return InlineKeyboardButton(text=f"{mark}{label}", callback_data=f"toggleremind:{prefix}:{minutes}")
+    if remind_enabled:
+        builder.row(InlineKeyboardButton(text="⏰ Напоминания", callback_data="noop"))
+        remind_set = set(settings.get("remind_before", DEFAULT_REMIND_BEFORE))
 
-    if is_online:
-        builder.row(
-            remind_toggle_button(15, "За 15 мин"),
-            remind_toggle_button(60, "За 1 час"),
-        )
-        builder.row(remind_toggle_button(120, "За 2 часа"))
-    else:
-        builder.row(
-            remind_toggle_button(60, "За 1 час"),
-            remind_toggle_button(120, "За 2 часа"),
-        )
+        def remind_toggle_button(minutes: int, label: str) -> InlineKeyboardButton:
+            mark = "✅ " if minutes in remind_set else ""
+            return InlineKeyboardButton(text=f"{mark}{label}", callback_data=f"toggleremind:{prefix}:{minutes}")
+
+        if is_online:
+            builder.row(
+                remind_toggle_button(15, "За 15 мин"),
+                remind_toggle_button(60, "За 1 час"),
+            )
+            builder.row(remind_toggle_button(120, "За 2 часа"))
+        else:
+            builder.row(
+                remind_toggle_button(60, "За 1 час"),
+                remind_toggle_button(120, "За 2 часа"),
+            )
 
     builder.row(InlineKeyboardButton(text="← К настройкам", callback_data="settingsroot"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
@@ -2403,7 +2419,14 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
         f"🕖 <b>Утренняя сводка</b>\n"
         f"{daily_block}\n\n"
         f"⏰ <b>Напоминания о встречах</b>\n"
+        f"Статус: <b>{'включены' if settings.get('remind_enabled', True) else 'выключены'}</b>\n"
         f"Когда напоминать: <b>{format_remind_label(settings['remind_before'])}</b>"
+        if settings.get("remind_enabled", True)
+        else f"<b>{title}</b>\n\n"
+             f"🕖 <b>Утренняя сводка</b>\n"
+             f"{daily_block}\n\n"
+             f"⏰ <b>Напоминания о встречах</b>\n"
+             f"Статус: <b>выключены</b>"
     )
     await send_or_edit(target, text, parse_mode=HTML_MODE, reply_markup=builder.as_markup())
 
@@ -2868,6 +2891,17 @@ async def set_daily_hour(callback: CallbackQuery):
     user_data = get_user_sub(uid)
     user_data[f"{group_type}_settings"]["daily_hour"] = int(hour)
     user_data[f"{group_type}_settings"]["daily_enabled"] = True
+    set_user_sub(uid, user_data)
+    await settings_menu(callback, group_type)
+
+
+@DP.callback_query(F.data.startswith("togglereminders:"))
+async def toggle_reminders_enabled(callback: CallbackQuery):
+    _, group_type = callback.data.split(":")
+    uid = str(callback.from_user.id)
+    user_data = get_user_sub(uid)
+    settings = user_data[f"{group_type}_settings"]
+    settings["remind_enabled"] = not settings.get("remind_enabled", True)
     set_user_sub(uid, user_data)
     await settings_menu(callback, group_type)
 
