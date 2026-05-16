@@ -2366,10 +2366,7 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
 
     builder = InlineKeyboardBuilder()
 
-    builder.row(InlineKeyboardButton(
-        text="Отключить утреннюю сводку" if daily_enabled else "Включить утреннюю сводку",
-        callback_data=f"toggledaily:{prefix}",
-    ))
+    builder.row(InlineKeyboardButton(text="🕖 Утренняя сводка", callback_data="noop"))
 
     if daily_enabled:
         hour_buttons = []
@@ -2380,6 +2377,11 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
             hour_buttons.append(InlineKeyboardButton(text=label, callback_data=f"setdailyhour:{prefix}:{hour}"))
         builder.row(*hour_buttons[:3])
         builder.row(*hour_buttons[3:])
+
+    builder.row(InlineKeyboardButton(
+        text="Отключить утреннюю сводку" if daily_enabled else "Включить утреннюю сводку",
+        callback_data=f"toggledaily:{prefix}",
+    ))
 
     remind_enabled = settings.get("remind_enabled", True)
 
