@@ -2369,21 +2369,17 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
         builder.row(*hour_buttons[3:])
 
     builder.row(InlineKeyboardButton(text="⏰ Напоминания", callback_data="noop"))
-    if is_online:
-        builder.row(
-            InlineKeyboardButton(text=_remind_option_label(settings, [15], "За 15 мин"), callback_data="setremind:online:15"),
-            InlineKeyboardButton(text=_remind_option_label(settings, [60], "За 1 час"), callback_data="setremind:online:1"),
-        )
-        builder.row(
-            InlineKeyboardButton(text=_remind_option_label(settings, [120], "За 2 часа"), callback_data="setremind:online:2"),
-            InlineKeyboardButton(text=_remind_option_label(settings, [60, 120], "За 1 и 2 часа"), callback_data="setremind:online:both"),
-        )
-    else:
-        builder.row(
-            InlineKeyboardButton(text=_remind_option_label(settings, [60], "За 1 час"), callback_data="setremind:live:1"),
-            InlineKeyboardButton(text=_remind_option_label(settings, [120], "За 2 часа"), callback_data="setremind:live:2"),
-            InlineKeyboardButton(text=_remind_option_label(settings, [60, 120], "За 1 и 2 часа"), callback_data="setremind:live:both"),
-        )
+    remind_set = set(settings.get("remind_before", DEFAULT_REMIND_BEFORE))
+
+    def remind_toggle_button(minutes: int, label: str) -> InlineKeyboardButton:
+        mark = "✅ " if minutes in remind_set else ""
+        return InlineKeyboardButton(text=f"{mark}{label}", callback_data=f"toggleremind:{prefix}:{minutes}")
+
+    builder.row(
+        remind_toggle_button(15, "За 15 мин"),
+        remind_toggle_button(60, "За 1 час"),
+    )
+    builder.row(remind_toggle_button(120, "За 2 часа"))
 
     builder.row(InlineKeyboardButton(text="← К настройкам", callback_data="settingsroot"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
@@ -2866,6 +2862,39 @@ async def set_daily_hour(callback: CallbackQuery):
     user_data = get_user_sub(uid)
     user_data[f"{group_type}_settings"]["daily_hour"] = int(hour)
     user_data[f"{group_type}_settings"]["daily_enabled"] = True
+    set_user_sub(uid, user_data)
+    await settings_menu(callback, group_type)
+
+
+@DP.callback_query(F.data.startswith("toggleremind:"))
+async def toggle_remind(callback: CallbackQuery):
+    _, group_type, minutes_raw = callback.data.split(":")
+    try:
+        minutes = int(minutes_raw)
+    except Exception:
+        await safe_callback_answer(callback, "Ошибка")
+        return
+
+    allowed = {15, 60, 120}
+    if minutes not in allowed:
+        await safe_callback_answer(callback, "Недоступный вариант")
+        return
+
+    uid = str(callback.from_user.id)
+    user_data = get_user_sub(uid)
+    settings = user_data[f"{group_type}_settings"]
+    current = set(normalize_remind_before(settings.get("remind_before", DEFAULT_REMIND_BEFORE)))
+
+    if minutes in current:
+        if len(current) == 1:
+            await safe_callback_answer(callback, "Оставьте хотя бы один вариант")
+            await settings_menu(callback, group_type)
+            return
+        current.remove(minutes)
+    else:
+        current.add(minutes)
+
+    settings["remind_before"] = sorted(current)
     set_user_sub(uid, user_data)
     await settings_menu(callback, group_type)
 
