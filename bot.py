@@ -32,7 +32,7 @@ CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "30"))
 DEFAULT_DAILY_HOUR = 7
 DEFAULT_REMIND_BEFORE = [60]
 HTML_MODE = "HTML"
-DAY_HOUR_CHOICES = [5, 6, 7, 8, 9, 15]
+DAY_HOUR_CHOICES = [5, 6, 7, 8, 9, 16]
 MAX_MESSAGE_LEN = 3800
 ONLINE_TIME_NOTE = "Время указано московское."
 CITY_PAGE_SIZE = 40
@@ -403,6 +403,11 @@ class SubscriberStore:
 
 
 STORE = SubscriberStore(SUBSCRIBERS_FILE)
+
+# Runtime guard against duplicate daily-summary checks inside one running process.
+# Key format: YYYY-MM-DD|HH
+DAILY_CHECKED_SLOTS = set()
+
 
 
 def read_live_source() -> str:
@@ -1872,8 +1877,9 @@ def cleanup_old_reminders(user_data: dict, now_dt: datetime):
 
 async def send_daily_notifications(bot: Bot, now_dt: datetime):
     subs = STORE.load_all()
-    changed = False
     today_str = now_dt.strftime("%Y-%m-%d")
+    hour_label = f"{now_dt.hour:02d}:00"
+
     for uid, raw_data in subs.items():
         user_data = normalize_user_sub(raw_data)
         meta = user_data.setdefault("meta", {})
@@ -1897,6 +1903,26 @@ async def send_daily_notifications(bot: Bot, now_dt: datetime):
             and now_dt.hour == live_settings["daily_hour"]
             and not live_already_sent
         )
+
+        print(
+            "daily check",
+            {
+                "uid": uid,
+                "date": today_str,
+                "hour": hour_label,
+                "online_hour": online_settings.get("daily_hour"),
+                "live_hour": live_settings.get("daily_hour"),
+                "online_enabled": online_settings.get("daily_enabled", True),
+                "live_enabled": live_settings.get("daily_enabled", True),
+                "online_subs": has_online_subscriptions(user_data),
+                "live_subs": has_live_subscriptions(user_data),
+                "last_online": meta.get("last_daily_sent_online"),
+                "last_live": meta.get("last_daily_sent_live"),
+                "should_online": should_send_online,
+                "should_live": should_send_live,
+            },
+        )
+
         if not (should_send_online or should_send_live):
             subs[uid] = user_data
             continue
@@ -1905,18 +1931,31 @@ async def send_daily_notifications(bot: Bot, now_dt: datetime):
         if not text:
             subs[uid] = user_data
             continue
+
+        # Mark before sending and save immediately.
+        # This prevents duplicate sends inside the same hour if the worker loops again
+        # or if the process restarts after sending but before final save.
+        if should_send_online:
+            meta["last_daily_sent_online"] = today_str
+        if should_send_live:
+            meta["last_daily_sent_live"] = today_str
+        subs[uid] = user_data
+        STORE.save_all(subs)
+
         try:
             await bot.send_message(int(uid), text, parse_mode=HTML_MODE, disable_web_page_preview=True)
-            if should_send_online:
-                meta["last_daily_sent_online"] = today_str
-            if should_send_live:
-                meta["last_daily_sent_live"] = today_str
-            changed = True
+            print(
+                "daily sent",
+                {
+                    "uid": uid,
+                    "date": today_str,
+                    "hour": hour_label,
+                    "online": should_send_online,
+                    "live": should_send_live,
+                },
+            )
         except Exception as e:
             print(f"daily send failed for {uid}: {e}")
-        subs[uid] = user_data
-    if changed:
-        STORE.save_all(subs)
 
 async def send_hourly_reminders(bot: Bot, now_dt: datetime):
     subs = STORE.load_all()
@@ -1941,9 +1980,18 @@ async def notifications_worker(bot: Bot):
     print("notifications worker started")
     while True:
         try:
-            now_dt = moscow_now().replace(second=0, microsecond=0)
-            if now_dt.minute == 0:
+            real_now = moscow_now()
+            now_dt = real_now.replace(second=0, microsecond=0)
+
+            # Daily summary: only once per process per date+hour, during the first minute.
+            # Do not use replace(second=0) for this condition, otherwise a 30-second loop
+            # can enter this block twice in the same minute.
+            slot_key = f"{real_now.strftime('%Y-%m-%d')}|{real_now.hour:02d}"
+            if real_now.minute == 0 and slot_key not in DAILY_CHECKED_SLOTS:
+                DAILY_CHECKED_SLOTS.add(slot_key)
+                print("daily slot check", {"slot": slot_key, "real_time": real_now.strftime("%H:%M:%S")})
                 await send_daily_notifications(bot, now_dt)
+
             await send_hourly_reminders(bot, now_dt)
         except Exception as e:
             print(f"notifications worker error: {e}")
