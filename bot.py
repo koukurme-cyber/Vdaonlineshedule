@@ -4,7 +4,6 @@ import hashlib
 import io
 import json
 import os
-import random
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -33,10 +32,11 @@ CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "30"))
 DEFAULT_DAILY_HOUR = 7
 DEFAULT_REMIND_BEFORE = [60]
 HTML_MODE = "HTML"
-DAY_HOUR_CHOICES = [5, 6, 7, 8, 9]
+DAY_HOUR_CHOICES = [5, 6, 7, 8, 9, 15]
 MAX_MESSAGE_LEN = 3800
 ONLINE_TIME_NOTE = "Время указано московское."
 CITY_PAGE_SIZE = 40
+DAILY_SUMMARY_LIMIT = 5
 
 DAYS = [
     "Понедельник",
@@ -50,19 +50,6 @@ DAYS = [
 
 DAY_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 
-SLOGANS_AND_AFFIRMATIONS = [
-    "Программа простая, но не лёгкая",
-    "Жизнь больше, чем просто выживание",
-    "Можно жить по-другому",
-    "Только сегодня",
-    "Не суетись",
-    "Не усложняй",
-    "Прогресс, а не совершенство",
-    "Первым делом — главное",
-    "И эта боль тоже пройдёт",
-    "Отпусти. Пусти Бога",
-    "Возвращайтесь снова и снова",
-]
 
 SPB_SUBURBS = [
     "Санкт-Петербург",
@@ -247,9 +234,8 @@ add_online_group(range(7), "09:00", "Свобода", "https://t.me/vda_svoboda"
 
 add_online_group([2, 4, 5], "13:00", "Начало (MAX)", "https://max.ru/join/K1vR_TmHfgSBKnKR9DT04dX1vO81a3GuyBP3kc0fsio")
 
-
-class LiveGroupSearch(StatesGroup):
-    waiting_for_city = State()
+# «По шагам Тони А.» теперь также проводится по пятницам в 19:00.
+add_online_group([4], "19:00", "По шагам Тони А.", "https://t.me/+ajasg4oH0SU3MjFi")
 
 
 class SubCitySearch(StatesGroup):
@@ -676,7 +662,6 @@ def abbreviate_place_hint(text: str, max_len: int = 22) -> str:
     return text
 
 
-
 def short_group_name_for_button(name: str, max_len: int = 34) -> str:
     """Короткое название только для кнопок. Полное название остаётся в карточке группы."""
     text = re.sub(r"\s+", " ", str(name or "").strip())
@@ -862,15 +847,45 @@ def format_online_schedule(name: str, max_len: Optional[int] = None) -> str:
     if not occurrences:
         return "расписание не указано"
 
-    by_time: Dict[str, List[int]] = {}
+    # Если по всем дням один и тот же набор времени — показываем компактно:
+    # ежедневно 09:00, 21:00
+    times_by_day: Dict[int, List[str]] = {}
     for day_index, time_str, _ in occurrences:
-        by_time.setdefault(time_str, []).append(day_index)
+        times_by_day.setdefault(day_index, []).append(time_str)
+    for day_index in times_by_day:
+        times_by_day[day_index] = sorted(set(times_by_day[day_index]))
+
+    if set(times_by_day.keys()) == set(range(7)):
+        first_times = times_by_day.get(0, [])
+        if first_times and all(times_by_day.get(day) == first_times for day in range(7)):
+            text = f"ежедневно {', '.join(first_times)}"
+            if max_len and len(text) > max_len:
+                text = text[:max_len].rsplit(";", 1)[0].rstrip() or text[:max_len].rstrip()
+                text += "…"
+            return text
+
+    # В остальных случаях порядок важнее группировки по времени:
+    # Пн 18:00; Вт 18:00; Ср 09:00; ...
+    # Но подряд идущие дни с одинаковым временем склеиваем:
+    # Пн, Вт 18:00
+    slots = sorted(
+        ((day_index, time_str) for day_index, time_str, _ in occurrences),
+        key=lambda x: (x[0], x[1]),
+    )
+
+    groups: List[Tuple[List[int], str]] = []
+    for day_index, time_str in slots:
+        if groups and groups[-1][1] == time_str and day_index == groups[-1][0][-1] + 1:
+            groups[-1][0].append(day_index)
+        else:
+            groups.append(([day_index], time_str))
 
     parts = []
-    for time_str, day_indexes in sorted(by_time.items(), key=lambda x: (x[0], x[1])):
-        day_text = format_day_list(day_indexes)
+    for days, time_str in groups:
+        day_text = format_day_list(days)
         if day_text:
             parts.append(f"{day_text} {time_str}")
+
     text = "; ".join(parts) if parts else "расписание не указано"
     if max_len and len(text) > max_len:
         text = text[:max_len].rsplit(";", 1)[0].rstrip() or text[:max_len].rstrip()
@@ -907,7 +922,6 @@ def format_online_subscription_info(name: str, user_data: dict) -> str:
     return "\n".join(lines)
 
 
-
 def find_live_group_by_gid_for_user(gid: str, user_data: dict) -> Optional[dict]:
     group_name = LIVE_GROUP_ID_TO_NAME.get(gid)
     if not group_name:
@@ -939,7 +953,6 @@ def format_live_subscription_info(group: dict, user_data: dict) -> str:
         f"Расписание: {escape_html(days)}\n\n"
         f"Подписка: <b>{status}</b>"
     )
-
 
 
 def make_short_id(prefix: str, name: str) -> str:
@@ -1097,7 +1110,6 @@ def get_online_full() -> str:
     return "\n\n".join(parts) if parts else "Онлайн-групп нет."
 
 
-
 def normalize_search_query(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip().lower())
 
@@ -1125,7 +1137,6 @@ def collect_live_group_matches(query: str) -> List[dict]:
         seen.add(key)
         result.append(group)
     return sorted(result, key=lambda g: (g.get("country") != "Россия", g.get("country", "").lower(), city_sort_key(g.get("city", "")), g.get("name", "").lower()))
-
 
 
 def format_group_days_for_search(group: dict, limit: int = 7) -> str:
@@ -1164,7 +1175,6 @@ def format_live_search_line(group: dict, include_city: bool = True, indent: bool
     if address:
         return f"{prefix} <b>{escape_html(group['name'])}</b>{city_part}; {address}; {days_text}"
     return f"{prefix} <b>{escape_html(group['name'])}</b>{city_part}; {days_text}"
-
 
 
 def plural_ru(number: int, one: str, few: str, many: str) -> str:
@@ -1331,22 +1341,6 @@ def back_markup(text: str, callback_data: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=text, callback_data=callback_data)]])
 
 
-def build_main_menu_keyboard() -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="🌐 Онлайн-встречи", callback_data="mainonline"),
-        InlineKeyboardButton(text="🏙 Живые встречи", callback_data="mainlive"),
-    )
-    builder.row(
-        InlineKeyboardButton(text="🔔 Подписки", callback_data="mainsub"),
-        InlineKeyboardButton(text="🔎 Найти группу или город", callback_data="searchgroup"),
-    )
-    builder.row(InlineKeyboardButton(text="📩 Контакты", callback_data="maincontacts"))
-    return builder.as_markup()
-
-
-
-
 CONTACTS_TEXT = (
     'По вопросам актуализации информации о группах пишите '
     '<a href="https://t.me/koukurme2022">сюда</a> '
@@ -1364,23 +1358,12 @@ HELP_TEXT = (
     '<b>Команды</b>\n'
     '/start — открыть главное меню.\n'
     '/help — показать эту справку.\n'
-    '/slogan — получить случайную фразу поддержки.\n\n'
+    '\n'
     '<b>Подписки</b>\n'
     'Можно подписаться на все онлайн-группы, все живые группы выбранного города или отдельные группы. '
     'Утренняя сводка и напоминания за 1/2 часа настраиваются отдельно для онлайн- и живых встреч. '
     'Сводку можно отключить, оставив только напоминания перед началом групп.'
 )
-
-
-def build_more_menu_keyboard() -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="💫 Фраза поддержки", callback_data="mainslogan"),
-        InlineKeyboardButton(text="📩 Контакты", callback_data="maincontacts"),
-    )
-    builder.row(InlineKeyboardButton(text="Помощь", callback_data="mainhelp"))
-    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
-    return builder.as_markup()
 
 
 def build_live_root_keyboard(user_data: Optional[dict] = None) -> InlineKeyboardMarkup:
@@ -1528,6 +1511,7 @@ def build_settings_root_menu(user_data: Optional[dict] = None) -> InlineKeyboard
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🌐 Настроить онлайн", callback_data="subsettingsonline"))
     builder.row(InlineKeyboardButton(text="🏙 Настроить живые", callback_data="subsettingslive"))
+    builder.row(InlineKeyboardButton(text="🧪 Отправить тест уведомления", callback_data="testdaily"))
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
@@ -1613,6 +1597,7 @@ def render_settings_root_text(user_data: dict) -> str:
     live_settings = get_live_settings(user_data)
     return (
         "⚙️ <b>Настройки подписок</b>\n\n"
+        "Кнопка теста отправляет уведомление сразу по текущим настройкам.\n\n"
         "🌐 <b>Онлайн</b>\n"
         f"Утренняя сводка: <b>{_daily_settings_text(online_settings)}</b>\n"
         f"Напоминания: <b>{format_remind_label(online_settings.get('remind_before', DEFAULT_REMIND_BEFORE)) if online_settings.get('remind_enabled', True) else 'выключены'}</b>\n\n"
@@ -1705,19 +1690,42 @@ def get_today_live_subscriptions(user_data: dict):
     return [item for item in get_live_groups_for_day(city, moscow_now().weekday(), user_data.get("country")) if is_user_subscribed_to_live(user_data, item[0])]
 
 
-def build_daily_message(user_data: dict, include_online: bool = True, include_live: bool = True) -> Optional[str]:
+def _trim_daily_items(items: list, limit: int = DAILY_SUMMARY_LIMIT):
+    shown = items[:limit]
+    hidden_count = max(0, len(items) - len(shown))
+    return shown, hidden_count
+
+
+def build_daily_message(
+    user_data: dict,
+    include_online: bool = True,
+    include_live: bool = True,
+    limit_per_section: int = DAILY_SUMMARY_LIMIT,
+    test_mode: bool = False,
+) -> Optional[str]:
     day_index = moscow_now().weekday()
     online_groups = get_today_online_subscriptions(user_data) if include_online else []
     live_groups = get_today_live_subscriptions(user_data) if include_live else []
     if not online_groups and not live_groups:
         return None
-    parts = [f"☀ Доброе утро. Вот ваши группы на сегодня, <b>{DAYS[day_index]}</b>:"]
+
+    header = "🧪 Отправить тест уведомления" if test_mode else "☀ Доброе утро. Вот ваши группы на сегодня"
+    parts = [f"{header}, <b>{DAYS[day_index]}</b>:"]
+
     if online_groups:
+        shown_online, hidden_online = _trim_daily_items(online_groups, limit_per_section)
         parts.append("\n🌐 <b>Онлайн</b>")
-        parts.extend(format_online_group(t, n, u) for t, n, u in online_groups)
+        parts.extend(format_online_group(t, n, u) for t, n, u in shown_online)
+        if hidden_online:
+            parts.append(f"…и ещё {hidden_online} онлайн-групп. Полное расписание смотрите в разделе «Онлайн-встречи».")
+
     if live_groups:
+        shown_live, hidden_live = _trim_daily_items(live_groups, limit_per_section)
         parts.append("\n🏙 <b>Живые</b>")
-        parts.extend(format_live_group_compact(n, a, s, e, w) for n, a, s, e, w in live_groups)
+        parts.extend(format_live_group_compact(n, a, s, e, w) for n, a, s, e, w in shown_live)
+        if hidden_live:
+            parts.append(f"…и ещё {hidden_live} живых групп. Полное расписание смотрите в разделе «Живые встречи».")
+
     return "\n".join(parts)
 
 
@@ -1760,8 +1768,6 @@ def build_live_multi_reminder(start: str, items: List[Tuple[str, str, bool]], mi
         label = " 🔧" if is_work_meeting else ""
         lines.append(f"• <b>{escape_html(name)}</b>{label} — {escape_html(address)}")
     return "\n".join(lines)
-
-
 
 
 def build_combined_reminder(start: str, online_items: List[Tuple[str, str]], live_items: List[Tuple[str, str, bool]], minutes_before: int) -> str:
@@ -1936,7 +1942,8 @@ async def notifications_worker(bot: Bot):
     while True:
         try:
             now_dt = moscow_now().replace(second=0, microsecond=0)
-            await send_daily_notifications(bot, now_dt)
+            if now_dt.minute == 0:
+                await send_daily_notifications(bot, now_dt)
             await send_hourly_reminders(bot, now_dt)
         except Exception as e:
             print(f"notifications worker error: {e}")
@@ -1967,39 +1974,6 @@ def normalize_expanded_id(raw: Optional[str]) -> str:
         return ""
     return raw
 
-
-def encode_expanded_id(value: Optional[str]) -> str:
-    value = normalize_expanded_id(value)
-    return value if value else "-"
-
-
-def online_group_details_block(name: str, user_data: dict) -> List[str]:
-    occurrences = collect_online_occurrences_for_group(name)
-    url = occurrences[0][2] if occurrences else ONLINE_GROUP_INFO.get(name, {}).get("url", "")
-    status = "включена" if is_user_subscribed_to_online(user_data, name) else "выключена"
-    lines = [
-        f"Расписание: {escape_html(format_online_full_schedule(name))}",
-        f"Время: {escape_html(ONLINE_TIME_NOTE.lower())}",
-    ]
-    if url:
-        lines.append(f'Ссылка: <a href="{url}">перейти</a>')
-    lines.append(f"Подписка: <b>{status}</b>")
-    return lines
-
-
-def live_group_details_block(group: dict, user_data: dict) -> List[str]:
-    name = group.get("name", "")
-    country = group.get("country")
-    city = group.get("city", "")
-    address = group.get("address", "")
-    schedule = format_group_days_for_search(group, limit=30)
-    status = "включена" if is_user_subscribed_to_live(user_data, name) else "выключена"
-    return [
-        f"Расписание: {escape_html(schedule)}",
-        f"Адрес: {escape_html(address) if address else 'не указан'}",
-        f"Город: <b>{escape_html(get_country_city_label(country, city))}</b>",
-        f"Подписка: <b>{status}</b>",
-    ]
 
 async def show_sub_main(target: CallbackQuery | Message):
     user_data = get_user_sub(str(target.from_user.id))
@@ -2362,10 +2336,7 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
 
     builder = InlineKeyboardBuilder()
 
-    builder.row(InlineKeyboardButton(
-        text="Отключить утреннюю сводку" if daily_enabled else "Включить утреннюю сводку",
-        callback_data=f"toggledaily:{prefix}",
-    ))
+    builder.row(InlineKeyboardButton(text="🕖 Утренняя сводка", callback_data="noop"))
 
     if daily_enabled:
         hour_buttons = []
@@ -2377,11 +2348,12 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
         builder.row(*hour_buttons[:3])
         builder.row(*hour_buttons[3:])
 
-    remind_enabled = settings.get("remind_enabled", True)
     builder.row(InlineKeyboardButton(
-        text="Отключить напоминания" if remind_enabled else "Включить напоминания",
-        callback_data=f"togglereminders:{prefix}",
+        text="Отключить утреннюю сводку" if daily_enabled else "Включить утреннюю сводку",
+        callback_data=f"toggledaily:{prefix}",
     ))
+
+    remind_enabled = settings.get("remind_enabled", True)
 
     if remind_enabled:
         builder.row(InlineKeyboardButton(text="⏰ Напоминания", callback_data="noop"))
@@ -2392,12 +2364,21 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
             return InlineKeyboardButton(text=f"{mark}{label}", callback_data=f"toggleremind:{prefix}:{minutes}")
 
         if is_online:
-            builder.row(remind_toggle_button(15, "За 15 мин"))
-            builder.row(remind_toggle_button(60, "За 1 час"))
+            builder.row(
+                remind_toggle_button(15, "За 15 мин"),
+                remind_toggle_button(60, "За 1 час"),
+            )
             builder.row(remind_toggle_button(120, "За 2 часа"))
         else:
-            builder.row(remind_toggle_button(60, "За 1 час"))
-            builder.row(remind_toggle_button(120, "За 2 часа"))
+            builder.row(
+                remind_toggle_button(60, "За 1 час"),
+                remind_toggle_button(120, "За 2 часа"),
+            )
+
+    builder.row(InlineKeyboardButton(
+        text="Отключить напоминания" if remind_enabled else "Включить напоминания",
+        callback_data=f"togglereminders:{prefix}",
+    ))
 
     builder.row(InlineKeyboardButton(text="← К настройкам", callback_data="settingsroot"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
@@ -2450,13 +2431,14 @@ async def cmd_help(message: Message):
     )
 
 
-@DP.message(Command("slogan"))
-async def cmd_slogan(message: Message):
-    await message.answer(
-        f"<b>Фраза поддержки</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
-        parse_mode=HTML_MODE,
-        reply_markup=back_markup("⬅️ Главное меню", "mainmenu"),
-    )
+@DP.message(Command("testdaily"))
+async def cmd_test_daily(message: Message, state: FSMContext):
+    # Команда должна срабатывать даже если пользователь остался в режиме поиска/ввода города.
+    try:
+        await state.clear()
+    except Exception:
+        pass
+    await send_test_daily_summary(message)
 
 
 @DP.callback_query(F.data == "mainmenu")
@@ -2531,21 +2513,6 @@ async def live_my_city_callback(callback: CallbackQuery):
     await send_or_edit(callback, f"🏙 <b>{escape_html(get_country_city_label(user_data.get('country'), city))}</b>", parse_mode=HTML_MODE, reply_markup=live_period_keyboard(city, user_data.get("country")))
 
 
-@DP.callback_query(F.data == "mainmore")
-async def main_more_callback(callback: CallbackQuery):
-    await send_or_edit(callback, "<b>Ещё</b>", parse_mode=HTML_MODE, reply_markup=build_more_menu_keyboard())
-
-
-@DP.callback_query(F.data == "mainhelp")
-async def main_help_callback(callback: CallbackQuery):
-    await send_or_edit(
-        callback,
-        HELP_TEXT,
-        parse_mode=HTML_MODE,
-        reply_markup=back_markup("← Ещё", "mainmore"),
-    )
-
-
 @DP.callback_query(F.data == "maincontacts")
 async def main_contacts_callback(callback: CallbackQuery):
     await send_or_edit(
@@ -2554,16 +2521,6 @@ async def main_contacts_callback(callback: CallbackQuery):
         parse_mode=HTML_MODE,
         disable_web_page_preview=True,
         reply_markup=back_markup("⬅️ Главное меню", "mainmenu"),
-    )
-
-
-@DP.callback_query(F.data == "mainslogan")
-async def main_slogan_callback(callback: CallbackQuery):
-    await send_or_edit(
-        callback,
-        f"<b>Фраза поддержки</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
-        parse_mode=HTML_MODE,
-        reply_markup=back_markup("← Ещё", "mainmore"),
     )
 
 
@@ -2658,7 +2615,6 @@ async def sub_live_city_selected(callback: CallbackQuery):
     user_data["city"] = city
     set_user_sub(uid, user_data)
     await show_sub_live_list(callback, city, country)
-
 
 
 @DP.callback_query(F.data == "subtoggleonlineall")
@@ -2853,6 +2809,109 @@ async def sub_toggle_live(callback: CallbackQuery):
         await show_sub_live_country_selector(callback)
 
 
+def build_daily_summary_test_plan(user_data: dict) -> Tuple[Optional[str], str]:
+    """Build a real-time test notification according to current daily-summary settings.
+
+    Returns:
+        message_to_send: actual notification text to send now, or None.
+        diagnostics: explanation of what was checked.
+    """
+    online_settings = get_online_settings(user_data)
+    live_settings = get_live_settings(user_data)
+
+    online_enabled = bool(online_settings.get("daily_enabled", True))
+    live_enabled = bool(live_settings.get("daily_enabled", True))
+
+    online_has_subs = has_online_subscriptions(user_data)
+    live_has_subs = has_live_subscriptions(user_data)
+
+    include_online = online_enabled and online_has_subs
+    include_live = live_enabled and live_has_subs
+
+    diagnostics = [
+        "🧪 <b>Тест уведомления</b>",
+        "",
+        "Тест отправляет отдельное сообщение прямо сейчас по текущим настройкам.",
+        "Отметки реальной отправки не меняются.",
+        "",
+        "⚙️ <b>Настройки</b>",
+        f"🌐 Онлайн-сводка: {'включена' if online_enabled else 'выключена'}, {int(online_settings.get('daily_hour', DEFAULT_DAILY_HOUR)):02d}:00",
+        f"🏙 Живая сводка: {'включена' if live_enabled else 'выключена'}, {int(live_settings.get('daily_hour', DEFAULT_DAILY_HOUR)):02d}:00",
+        "",
+        "🔔 <b>Подписки</b>",
+        f"🌐 Онлайн: {'есть' if online_has_subs else 'нет'}",
+        f"🏙 Живые: {'есть' if live_has_subs else 'нет'}",
+    ]
+
+    if not include_online and not include_live:
+        diagnostics.extend(["", "Тестовое уведомление не отправлено:"])
+        if not online_enabled:
+            diagnostics.append("• онлайн-сводка выключена")
+        elif not online_has_subs:
+            diagnostics.append("• нет онлайн-подписок")
+        if not live_enabled:
+            diagnostics.append("• живая сводка выключена")
+        elif not live_has_subs:
+            diagnostics.append("• нет живых подписок")
+        return None, "\n".join(diagnostics)
+
+    message_to_send = build_daily_message(
+        user_data,
+        include_online=include_online,
+        include_live=include_live,
+        test_mode=True,
+    )
+
+    if not message_to_send:
+        diagnostics.extend(["", "Тестовое уведомление не отправлено: на сегодня по включённым разделам групп не найдено."])
+        return None, "\n".join(diagnostics)
+
+    diagnostics.extend(["", "Тестовое уведомление отправлено отдельным сообщением."])
+    return message_to_send, "\n".join(diagnostics)
+
+
+async def send_test_daily_summary(target: CallbackQuery | Message):
+    user_data = get_user_sub(str(target.from_user.id))
+    message_to_send, diagnostics = build_daily_summary_test_plan(user_data)
+
+    if isinstance(target, CallbackQuery):
+        if message_to_send:
+            await target.message.answer(
+                message_to_send,
+                parse_mode=HTML_MODE,
+                disable_web_page_preview=True,
+            )
+        await send_or_edit(
+            target,
+            diagnostics,
+            parse_mode=HTML_MODE,
+            disable_web_page_preview=True,
+            reply_markup=back_markup("← К настройкам", "settingsroot"),
+        )
+        return
+
+    # Message-command version. Send exactly as real notification would be sent: as a new chat message.
+    if message_to_send:
+        await target.answer(
+            message_to_send,
+            parse_mode=HTML_MODE,
+            disable_web_page_preview=True,
+        )
+
+    await target.answer(
+        diagnostics,
+        parse_mode=HTML_MODE,
+        disable_web_page_preview=True,
+        reply_markup=back_markup("← К настройкам", "settingsroot"),
+    )
+
+
+@DP.callback_query(F.data == "testdaily")
+async def test_daily_callback(callback: CallbackQuery):
+    await send_test_daily_summary(callback)
+
+
+
 @DP.callback_query(F.data == "settingsroot")
 async def settings_root_callback(callback: CallbackQuery):
     user_data = get_user_sub(str(callback.from_user.id))
@@ -2988,31 +3047,6 @@ async def back_to_live(callback: CallbackQuery):
     await send_or_edit(callback, "🏙 <b>Живые встречи</b>\n\nПроходят очно в выбранном городе.", parse_mode=HTML_MODE, reply_markup=build_live_root_keyboard(get_user_sub(str(callback.from_user.id))))
 
 
-@DP.callback_query(F.data == "livesearchcity")
-async def live_search_city_start(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(LiveGroupSearch.waiting_for_city)
-    await send_or_edit(callback, "🔍 Введите город:", reply_markup=back_markup("← К городам", "modelive"))
-
-
-@DP.message(StateFilter(LiveGroupSearch.waiting_for_city))
-async def live_search_city_handle(message: Message, state: FSMContext):
-    await state.clear()
-    matched = get_searchable_cities((message.text or "").strip())
-    if not matched:
-        await message.answer("Город не найден.", reply_markup=back_markup("← К странам", "livechoosecountry"))
-        return
-    if len(matched) == 1:
-        country, city = matched[0]
-        await message.answer(f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>", parse_mode=HTML_MODE, reply_markup=live_period_keyboard(city, country))
-        return
-    builder = InlineKeyboardBuilder()
-    for country, city in matched[:20]:
-        builder.button(text=get_country_city_label(country, city), callback_data=f"livecity{get_location_id(city, country)}")
-    builder.adjust(1)
-    builder.row(InlineKeyboardButton(text="← К странам", callback_data="livechoosecountry"))
-    await message.answer("🔍 Уточните город:", reply_markup=builder.as_markup())
-
-
 @DP.callback_query(F.data.startswith("livecity"))
 async def process_city(callback: CallbackQuery):
     cid = callback.data[len("livecity"):]
@@ -3109,29 +3143,6 @@ async def btn_my_groups(message: Message):
 async def btn_settings(message: Message):
     user_data = get_user_sub(str(message.from_user.id))
     await message.answer(render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu(user_data))
-
-
-@DP.message(F.text == "Ещё")
-async def btn_more(message: Message):
-    await message.answer("<b>Ещё</b>", parse_mode=HTML_MODE, reply_markup=build_more_menu_keyboard())
-
-
-@DP.message(F.text == "Помощь")
-async def btn_help(message: Message):
-    await message.answer(
-        HELP_TEXT,
-        parse_mode=HTML_MODE,
-        reply_markup=back_markup("← Ещё", "mainmore"),
-    )
-
-
-@DP.message(F.text == "💫 Фраза поддержки")
-async def btn_slogan(message: Message):
-    await message.answer(
-        f"<b>Фраза поддержки</b>\n<i>{escape_html(random.choice(SLOGANS_AND_AFFIRMATIONS))}</i>",
-        parse_mode=HTML_MODE,
-        reply_markup=back_markup("← Ещё", "mainmore"),
-    )
 
 
 @DP.message(F.text == "Настройки уведомлений")
