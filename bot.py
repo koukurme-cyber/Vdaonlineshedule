@@ -32,11 +32,11 @@ CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "30"))
 DEFAULT_DAILY_HOUR = 7
 DEFAULT_REMIND_BEFORE = [60]
 HTML_MODE = "HTML"
-DAY_HOUR_CHOICES = [5, 6, 7, 8, 9, 18]
+DAY_HOUR_CHOICES = [5, 6, 7, 8, 9]
 MAX_MESSAGE_LEN = 3800
 ONLINE_TIME_NOTE = "Время указано московское."
 CITY_PAGE_SIZE = 40
-DAILY_SUMMARY_LIMIT = 5
+DAILY_SUMMARY_LIMIT = 999
 
 DAYS = [
     "Понедельник",
@@ -1696,9 +1696,17 @@ def get_today_live_subscriptions(user_data: dict):
 
 
 def _trim_daily_items(items: list, limit: int = DAILY_SUMMARY_LIMIT):
-    shown = items[:limit]
-    hidden_count = max(0, len(items) - len(shown))
-    return shown, hidden_count
+    # Утренняя сводка больше не обрезается: показываем все группы на сегодня.
+    return items, 0
+
+
+def format_live_group_for_daily_summary(name: str, address: str, start: str, end: str, is_work_meeting: bool = False) -> str:
+    """Compact live-group line for morning summary."""
+    label = " 🔧" if is_work_meeting else ""
+    hint = compact_address_hint(address, max_len=54)
+    if hint and hint != "адрес не указан":
+        return f"• <b>{escape_html(start)}–{escape_html(end)}</b> — {escape_html(name)}{label} — {escape_html(hint)}"
+    return f"• <b>{escape_html(start)}–{escape_html(end)}</b> — {escape_html(name)}{label}"
 
 
 def build_daily_message(
@@ -1714,22 +1722,19 @@ def build_daily_message(
     if not online_groups and not live_groups:
         return None
 
-    header = "🧪 Отправить тест уведомления" if test_mode else "☀ Доброе утро. Вот ваши группы на сегодня"
+    header = "🧪 Тест утренней сводки" if test_mode else "☀ Доброе утро. Вот ваши группы на сегодня"
     parts = [f"{header}, <b>{DAYS[day_index]}</b>:"]
 
     if online_groups:
-        shown_online, hidden_online = _trim_daily_items(online_groups, limit_per_section)
         parts.append("\n🌐 <b>Онлайн</b>")
-        parts.extend(format_online_group(t, n, u) for t, n, u in shown_online)
-        if hidden_online:
-            parts.append(f"…и ещё {hidden_online} онлайн-групп. Полное расписание смотрите в разделе «Онлайн-встречи».")
+        parts.extend(format_online_group(t, n, u) for t, n, u in online_groups)
 
     if live_groups:
-        shown_live, hidden_live = _trim_daily_items(live_groups, limit_per_section)
         parts.append("\n🏙 <b>Живые</b>")
-        parts.extend(format_live_group_compact(n, a, s, e, w) for n, a, s, e, w in shown_live)
-        if hidden_live:
-            parts.append(f"…и ещё {hidden_live} живых групп. Полное расписание смотрите в разделе «Живые встречи».")
+        parts.extend(
+            format_live_group_for_daily_summary(n, a, s, e, w)
+            for n, a, s, e, w in live_groups
+        )
 
     return "\n".join(parts)
 
@@ -1904,25 +1909,6 @@ async def send_daily_notifications(bot: Bot, now_dt: datetime):
             and not live_already_sent
         )
 
-        print(
-            "daily check",
-            {
-                "uid": uid,
-                "date": today_str,
-                "hour": hour_label,
-                "online_hour": online_settings.get("daily_hour"),
-                "live_hour": live_settings.get("daily_hour"),
-                "online_enabled": online_settings.get("daily_enabled", True),
-                "live_enabled": live_settings.get("daily_enabled", True),
-                "online_subs": has_online_subscriptions(user_data),
-                "live_subs": has_live_subscriptions(user_data),
-                "last_online": meta.get("last_daily_sent_online"),
-                "last_live": meta.get("last_daily_sent_live"),
-                "should_online": should_send_online,
-                "should_live": should_send_live,
-            },
-        )
-
         if not (should_send_online or should_send_live):
             subs[uid] = user_data
             continue
@@ -1944,16 +1930,6 @@ async def send_daily_notifications(bot: Bot, now_dt: datetime):
 
         try:
             await bot.send_message(int(uid), text, parse_mode=HTML_MODE, disable_web_page_preview=True)
-            print(
-                "daily sent",
-                {
-                    "uid": uid,
-                    "date": today_str,
-                    "hour": hour_label,
-                    "online": should_send_online,
-                    "live": should_send_live,
-                },
-            )
         except Exception as e:
             print(f"daily send failed for {uid}: {e}")
 
@@ -1989,7 +1965,6 @@ async def notifications_worker(bot: Bot):
             slot_key = f"{real_now.strftime('%Y-%m-%d')}|{real_now.hour:02d}"
             if real_now.minute == 0 and slot_key not in DAILY_CHECKED_SLOTS:
                 DAILY_CHECKED_SLOTS.add(slot_key)
-                print("daily slot check", {"slot": slot_key, "real_time": real_now.strftime("%H:%M:%S")})
                 await send_daily_notifications(bot, now_dt)
 
             await send_hourly_reminders(bot, now_dt)
