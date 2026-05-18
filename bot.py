@@ -2365,43 +2365,49 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
 
     builder = InlineKeyboardBuilder()
 
-    # Утренняя сводка: если выбранного времени нет — сводка выключена.
+    # Утренняя сводка
     builder.row(InlineKeyboardButton(text="🕖 Утренняя сводка", callback_data="noop"))
     daily_enabled = settings.get("daily_enabled", True)
     daily_hour = int(settings.get("daily_hour", DEFAULT_DAILY_HOUR))
 
-    hour_buttons = []
-    for hour in DAY_HOUR_CHOICES:
-        checked = "✅ " if daily_enabled and daily_hour == hour else ""
-        hour_buttons.append(
-            InlineKeyboardButton(
-                text=f"{checked}{hour:02d}:00",
-                callback_data=f"toggledailyhour:{prefix}:{hour}",
+    if daily_enabled:
+        hour_buttons = []
+        for hour in DAY_HOUR_CHOICES:
+            checked = "✅ " if daily_hour == hour else ""
+            hour_buttons.append(
+                InlineKeyboardButton(
+                    text=f"{checked}{hour:02d}:00",
+                    callback_data=f"toggledailyhour:{prefix}:{hour}",
+                )
             )
-        )
-    builder.row(*hour_buttons[:3])
-    builder.row(*hour_buttons[3:])
+        builder.row(*hour_buttons[:3])
+        builder.row(*hour_buttons[3:])
+    else:
+        builder.row(InlineKeyboardButton(text="Включить утреннюю сводку", callback_data=f"enabledaily:{prefix}"))
 
-    # Напоминания: если ни одной галочки нет — напоминания выключены.
+    # Напоминания
     builder.row(InlineKeyboardButton(text="⏰ Напоминания", callback_data="noop"))
     remind_enabled = settings.get("remind_enabled", True)
     remind_set = set(settings.get("remind_before", DEFAULT_REMIND_BEFORE)) if remind_enabled else set()
 
-    def remind_toggle_button(minutes: int, label: str) -> InlineKeyboardButton:
-        mark = "✅ " if minutes in remind_set else ""
-        return InlineKeyboardButton(text=f"{mark}{label}", callback_data=f"toggleremind:{prefix}:{minutes}")
+    if remind_enabled:
+        def remind_toggle_button(minutes: int, label: str) -> InlineKeyboardButton:
+            mark = "✅ " if minutes in remind_set else ""
+            return InlineKeyboardButton(text=f"{mark}{label}", callback_data=f"toggleremind:{prefix}:{minutes}")
 
-    if is_online:
-        builder.row(
-            remind_toggle_button(15, "За 15 мин"),
-            remind_toggle_button(60, "За 1 час"),
-        )
-        builder.row(remind_toggle_button(120, "За 2 часа"))
+        if is_online:
+            builder.row(
+                remind_toggle_button(15, "За 15 мин"),
+                remind_toggle_button(60, "За 1 час"),
+            )
+            builder.row(remind_toggle_button(120, "За 2 часа"))
+        else:
+            builder.row(
+                remind_toggle_button(60, "За 1 час"),
+                remind_toggle_button(120, "За 2 часа"),
+            )
     else:
-        builder.row(
-            remind_toggle_button(60, "За 1 час"),
-            remind_toggle_button(120, "За 2 часа"),
-        )
+        builder.row(InlineKeyboardButton(text="Включить напоминания", callback_data=f"enablereminders:{prefix}"))
 
     builder.row(InlineKeyboardButton(text="← К настройкам", callback_data="settingsroot"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
@@ -2409,14 +2415,24 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
     daily_text = f"включена, {daily_hour:02d}:00" if daily_enabled else "выключена"
     remind_text = format_remind_label(sorted(remind_set)) if remind_enabled and remind_set else "выключены"
 
+    if daily_enabled:
+        daily_help = "Нажмите выбранное время ещё раз, чтобы выключить сводку."
+    else:
+        daily_help = "Нажмите «Включить утреннюю сводку», чтобы снова выбрать время."
+
+    if remind_enabled:
+        remind_help = "Снимите все галочки, чтобы выключить напоминания."
+    else:
+        remind_help = "Нажмите «Включить напоминания», чтобы снова выбрать интервалы."
+
     text = (
         f"<b>{title}</b>\n\n"
         f"🕖 <b>Утренняя сводка</b>\n"
         f"Статус: <b>{daily_text}</b>\n"
-        "Нажмите выбранное время ещё раз, чтобы выключить сводку.\n\n"
+        f"{daily_help}\n\n"
         f"⏰ <b>Напоминания о встречах</b>\n"
         f"Статус: <b>{remind_text}</b>\n"
-        "Снимите все галочки, чтобы выключить напоминания."
+        f"{remind_help}"
     )
     await send_or_edit(target, text, parse_mode=HTML_MODE, reply_markup=builder.as_markup())
 
@@ -2828,6 +2844,54 @@ async def sub_settings_live(callback: CallbackQuery):
     await settings_menu(callback, "live")
 
 
+@DP.callback_query(F.data.startswith("enabledaily:"))
+async def enable_daily_summary(callback: CallbackQuery):
+    _, group_type = callback.data.split(":")
+    uid = str(callback.from_user.id)
+    user_data = get_user_sub(uid)
+    settings = user_data[f"{group_type}_settings"]
+    settings["daily_enabled"] = True
+    # Keep previous hour if valid, otherwise use default.
+    try:
+        current_hour = int(settings.get("daily_hour", DEFAULT_DAILY_HOUR))
+    except Exception:
+        current_hour = DEFAULT_DAILY_HOUR
+    if current_hour not in DAY_HOUR_CHOICES:
+        current_hour = DEFAULT_DAILY_HOUR
+    settings["daily_hour"] = current_hour
+    set_user_sub(uid, user_data)
+    await settings_menu(callback, group_type)
+
+
+@DP.callback_query(F.data.startswith("toggledailyhour:"))
+async def toggle_daily_hour(callback: CallbackQuery):
+    _, group_type, hour_raw = callback.data.split(":")
+    try:
+        hour = int(hour_raw)
+    except Exception:
+        await safe_callback_answer(callback, "Ошибка")
+        return
+
+    uid = str(callback.from_user.id)
+    user_data = get_user_sub(uid)
+    settings = user_data[f"{group_type}_settings"]
+
+    try:
+        current_hour = int(settings.get("daily_hour", DEFAULT_DAILY_HOUR))
+    except Exception:
+        current_hour = DEFAULT_DAILY_HOUR
+    current_enabled = settings.get("daily_enabled", True)
+
+    if current_enabled and current_hour == hour:
+        settings["daily_enabled"] = False
+    else:
+        settings["daily_hour"] = hour
+        settings["daily_enabled"] = True
+
+    set_user_sub(uid, user_data)
+    await settings_menu(callback, group_type)
+
+
 @DP.callback_query(F.data.startswith("toggledaily:"))
 async def toggle_daily_summary(callback: CallbackQuery):
     _, group_type = callback.data.split(":")
@@ -2849,6 +2913,24 @@ async def set_daily_hour(callback: CallbackQuery):
     set_user_sub(uid, user_data)
     await settings_menu(callback, group_type)
 
+
+@DP.callback_query(F.data.startswith("enablereminders:"))
+async def enable_reminders(callback: CallbackQuery):
+    _, group_type = callback.data.split(":")
+    uid = str(callback.from_user.id)
+    user_data = get_user_sub(uid)
+    settings = user_data[f"{group_type}_settings"]
+
+    settings["remind_enabled"] = True
+    current = set(settings.get("remind_before", []))
+    allowed = {15, 60, 120} if group_type == "online" else {60, 120}
+    current = {int(v) for v in current if int(v) in allowed}
+    if not current:
+        current = {60}
+    settings["remind_before"] = sorted(current)
+
+    set_user_sub(uid, user_data)
+    await settings_menu(callback, group_type)
 
 
 @DP.callback_query(F.data.startswith("toggleremind:"))
