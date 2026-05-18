@@ -1740,8 +1740,18 @@ def build_reminder_key(group_type: str, group_name: str, date_str: str, time_str
     return f"{group_type}|{group_name}|{date_str}|{time_str}|{minutes_before}"
 
 
+def reminder_before_text(minutes_before: int) -> str:
+    if minutes_before == 15:
+        return "через 15 минут"
+    if minutes_before == 60:
+        return "через час"
+    if minutes_before == 120:
+        return "через два часа"
+    return f"через {minutes_before} минут"
+
+
 def build_online_single_reminder(name: str, url: str, time_str: str, minutes_before: int) -> str:
-    before_text = "через час" if minutes_before == 60 else "через два часа"
+    before_text = reminder_before_text(minutes_before)
     return (
         f"Напоминание: {before_text} начнётся онлайн-группа.\n\n"
         f"🌐 <b>{escape_html(name)}</b>\n"
@@ -1751,14 +1761,14 @@ def build_online_single_reminder(name: str, url: str, time_str: str, minutes_bef
 
 
 def build_online_multi_reminder(time_str: str, items: List[Tuple[str, str]], minutes_before: int) -> str:
-    before_text = "через час" if minutes_before == 60 else "через два часа"
+    before_text = reminder_before_text(minutes_before)
     lines = [f"Напоминание: {before_text} начнутся онлайн-группы.", "", f"Начало: <b>{time_str}</b>", ""]
     lines.extend(f"• <a href=\"{url}\"><b>{escape_html(name)}</b></a>" for name, url in sorted(items, key=lambda x: x[0].lower()))
     return "\n".join(lines)
 
 
 def build_live_single_reminder(name: str, address: str, start: str, is_work_meeting: bool, minutes_before: int) -> str:
-    before_text = "через час" if minutes_before == 60 else "через два часа"
+    before_text = reminder_before_text(minutes_before)
     label = " 🔧" if is_work_meeting else ""
     return (
         f"Напоминание: {before_text} начнётся живая группа.\n\n"
@@ -1769,7 +1779,7 @@ def build_live_single_reminder(name: str, address: str, start: str, is_work_meet
 
 
 def build_live_multi_reminder(start: str, items: List[Tuple[str, str, bool]], minutes_before: int) -> str:
-    before_text = "через час" if minutes_before == 60 else "через два часа"
+    before_text = reminder_before_text(minutes_before)
     lines = [f"Напоминание: {before_text} начнутся живые группы.", "", f"Начало: <b>{start}</b>", ""]
     for name, address, is_work_meeting in sorted(items, key=lambda x: x[0].lower()):
         label = " 🔧" if is_work_meeting else ""
@@ -1779,7 +1789,7 @@ def build_live_multi_reminder(start: str, items: List[Tuple[str, str, bool]], mi
 
 def build_combined_reminder(start: str, online_items: List[Tuple[str, str]], live_items: List[Tuple[str, str, bool]], minutes_before: int) -> str:
     """One reminder for all subscribed groups that start at the same time."""
-    before_text = "через час" if minutes_before == 60 else "через два часа"
+    before_text = reminder_before_text(minutes_before)
     total = len(online_items) + len(live_items)
 
     if online_items and live_items:
