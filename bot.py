@@ -409,7 +409,6 @@ STORE = SubscriberStore(SUBSCRIBERS_FILE)
 DAILY_CHECKED_SLOTS = set()
 
 
-
 def read_live_source() -> str:
     for path in [LIVE_GROUPS_FILE, Path("live_groups.tsv"), Path("livegroups.tsv")]:
         if path.exists():
@@ -1516,7 +1515,6 @@ def build_settings_root_menu(user_data: Optional[dict] = None) -> InlineKeyboard
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🌐 Настроить онлайн", callback_data="subsettingsonline"))
     builder.row(InlineKeyboardButton(text="🏙 Настроить живые", callback_data="subsettingslive"))
-    builder.row(InlineKeyboardButton(text="🧪 Отправить тест уведомления", callback_data="testdaily"))
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
@@ -1602,7 +1600,6 @@ def render_settings_root_text(user_data: dict) -> str:
     live_settings = get_live_settings(user_data)
     return (
         "⚙️ <b>Настройки подписок</b>\n\n"
-        "Кнопка теста отправляет уведомление сразу по текущим настройкам.\n\n"
         "🌐 <b>Онлайн</b>\n"
         f"Утренняя сводка: <b>{_daily_settings_text(online_settings)}</b>\n"
         f"Напоминания: <b>{format_remind_label(online_settings.get('remind_before', DEFAULT_REMIND_BEFORE)) if online_settings.get('remind_enabled', True) else 'выключены'}</b>\n\n"
@@ -2454,16 +2451,6 @@ async def cmd_help(message: Message):
     )
 
 
-@DP.message(Command("testdaily"))
-async def cmd_test_daily(message: Message, state: FSMContext):
-    # Команда должна срабатывать даже если пользователь остался в режиме поиска/ввода города.
-    try:
-        await state.clear()
-    except Exception:
-        pass
-    await send_test_daily_summary(message)
-
-
 @DP.callback_query(F.data == "mainmenu")
 async def main_menu_callback(callback: CallbackQuery):
     await send_or_edit(callback, "🏠 <b>Главное меню</b>\n\nИспользуйте кнопки нижнего меню.", parse_mode=HTML_MODE, reply_markup=None)
@@ -2830,109 +2817,6 @@ async def sub_toggle_live(callback: CallbackQuery):
         await show_sub_live_list(callback, city, user_data.get("country"))
     else:
         await show_sub_live_country_selector(callback)
-
-
-def build_daily_summary_test_plan(user_data: dict) -> Tuple[Optional[str], str]:
-    """Build a real-time test notification according to current daily-summary settings.
-
-    Returns:
-        message_to_send: actual notification text to send now, or None.
-        diagnostics: explanation of what was checked.
-    """
-    online_settings = get_online_settings(user_data)
-    live_settings = get_live_settings(user_data)
-
-    online_enabled = bool(online_settings.get("daily_enabled", True))
-    live_enabled = bool(live_settings.get("daily_enabled", True))
-
-    online_has_subs = has_online_subscriptions(user_data)
-    live_has_subs = has_live_subscriptions(user_data)
-
-    include_online = online_enabled and online_has_subs
-    include_live = live_enabled and live_has_subs
-
-    diagnostics = [
-        "🧪 <b>Тест уведомления</b>",
-        "",
-        "Тест отправляет отдельное сообщение прямо сейчас по текущим настройкам.",
-        "Отметки реальной отправки не меняются.",
-        "",
-        "⚙️ <b>Настройки</b>",
-        f"🌐 Онлайн-сводка: {'включена' if online_enabled else 'выключена'}, {int(online_settings.get('daily_hour', DEFAULT_DAILY_HOUR)):02d}:00",
-        f"🏙 Живая сводка: {'включена' if live_enabled else 'выключена'}, {int(live_settings.get('daily_hour', DEFAULT_DAILY_HOUR)):02d}:00",
-        "",
-        "🔔 <b>Подписки</b>",
-        f"🌐 Онлайн: {'есть' if online_has_subs else 'нет'}",
-        f"🏙 Живые: {'есть' if live_has_subs else 'нет'}",
-    ]
-
-    if not include_online and not include_live:
-        diagnostics.extend(["", "Тестовое уведомление не отправлено:"])
-        if not online_enabled:
-            diagnostics.append("• онлайн-сводка выключена")
-        elif not online_has_subs:
-            diagnostics.append("• нет онлайн-подписок")
-        if not live_enabled:
-            diagnostics.append("• живая сводка выключена")
-        elif not live_has_subs:
-            diagnostics.append("• нет живых подписок")
-        return None, "\n".join(diagnostics)
-
-    message_to_send = build_daily_message(
-        user_data,
-        include_online=include_online,
-        include_live=include_live,
-        test_mode=True,
-    )
-
-    if not message_to_send:
-        diagnostics.extend(["", "Тестовое уведомление не отправлено: на сегодня по включённым разделам групп не найдено."])
-        return None, "\n".join(diagnostics)
-
-    diagnostics.extend(["", "Тестовое уведомление отправлено отдельным сообщением."])
-    return message_to_send, "\n".join(diagnostics)
-
-
-async def send_test_daily_summary(target: CallbackQuery | Message):
-    user_data = get_user_sub(str(target.from_user.id))
-    message_to_send, diagnostics = build_daily_summary_test_plan(user_data)
-
-    if isinstance(target, CallbackQuery):
-        if message_to_send:
-            await target.message.answer(
-                message_to_send,
-                parse_mode=HTML_MODE,
-                disable_web_page_preview=True,
-            )
-        await send_or_edit(
-            target,
-            diagnostics,
-            parse_mode=HTML_MODE,
-            disable_web_page_preview=True,
-            reply_markup=back_markup("← К настройкам", "settingsroot"),
-        )
-        return
-
-    # Message-command version. Send exactly as real notification would be sent: as a new chat message.
-    if message_to_send:
-        await target.answer(
-            message_to_send,
-            parse_mode=HTML_MODE,
-            disable_web_page_preview=True,
-        )
-
-    await target.answer(
-        diagnostics,
-        parse_mode=HTML_MODE,
-        disable_web_page_preview=True,
-        reply_markup=back_markup("← К настройкам", "settingsroot"),
-    )
-
-
-@DP.callback_query(F.data == "testdaily")
-async def test_daily_callback(callback: CallbackQuery):
-    await send_test_daily_summary(callback)
-
 
 
 @DP.callback_query(F.data == "settingsroot")
