@@ -80,7 +80,6 @@ ONLINE_SCHEDULE = {
     0: [
         ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
         ("07:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
-        ("07:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("08:00", "Единство утро", "https://t.me/ACAgroupUnityMoscow"),
         ("08:00", "Говори Доверяй Чувствуй", "https://t.me/govori_vda"),
         ("09:00", "Доверие", "https://t.me/VDADoverie"),
@@ -88,7 +87,6 @@ ONLINE_SCHEDULE = {
         ("17:00", "Шаг за шагом", "https://t.me/joinchat/4SFNdPrxumNkYzky"),
         ("18:00", "Весна", "https://t.me/vdavesna_2021"),
         ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
-        ("19:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("21:00", "ДЫШИ!", "https://t.me/breathelivebe"),
         ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
@@ -96,14 +94,12 @@ ONLINE_SCHEDULE = {
     1: [
         ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
         ("07:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
-        ("07:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("09:00", "Доверие", "https://t.me/VDADoverie"),
         ("12:00", "День за днём", "https://t.me/+BwAsiX1KsGljZjQy"),
         ("15:00", "ВДА вокруг света", "https://t.me/+nFn14RqYkyozZmUy"),
         ("18:00", "Весна", "https://t.me/vdavesna_2021"),
         ("19:00", "Артплей", "https://t.me/VDAartPlay"),
         ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
-        ("19:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("20:00", "Феникс", "https://t.me/+1GAp8vi4hyNmMzUy"),
         ("20:00", "По шагам Тони А.", "https://t.me/+ajasg4oH0SU3MjFi"),
         ("21:00", "ДЫШИ!", "https://t.me/breathelivebe"),
@@ -113,7 +109,6 @@ ONLINE_SCHEDULE = {
     2: [
         ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
         ("07:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
-        ("07:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("08:00", "Единство утро", "https://t.me/ACAgroupUnityMoscow"),
         ("09:00", "Доверие", "https://t.me/VDADoverie"),
         ("12:00", "День за днём", "https://t.me/+BwAsiX1KsGljZjQy"),
@@ -124,7 +119,6 @@ ONLINE_SCHEDULE = {
         ("19:00", "Точка Опоры (Zoom)", "https://us06web.zoom.us/j/88678026186?pwd=QYiLNtlro6gEZ3f6eVZdwu7CAHbVF3.1"),
         ("19:00", "Светский круг (жен.)", "https://t.me/+Pyarr0R7MSEyMGIy"),
         ("19:00", "ВДА-ВЕРА", "https://t.me/+J2m1MAbQ818zNTFi"),
-        ("19:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("19:30", "Эффект бабочки", "https://t.me/+FcaUkHDOuMpkMTI8"),
         ("20:00", "Мужская ВДА", "https://t.me/+ewtjezZaCtM5YTdi"),
         ("20:00", "Доверие (вопросы)", "https://t.me/VDADoverie"),
@@ -135,7 +129,6 @@ ONLINE_SCHEDULE = {
     ],
     3: [
         ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
-        ("07:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("07:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
         ("09:00", "Доверие", "https://t.me/VDADoverie"),
         ("12:00", "День за днём", "https://t.me/+BwAsiX1KsGljZjQy"),
@@ -145,7 +138,6 @@ ONLINE_SCHEDULE = {
         ("19:00", "ВДА в Рязани", "https://t.me/+MHSRTpkJliw5YzUy"),
         ("19:00", "Артплей (онлайн)", "https://t.me/VDAartPlay"),
         ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
-        ("19:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("21:00", "ДЫШИ!", "https://t.me/breathelivebe"),
         ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
@@ -153,7 +145,6 @@ ONLINE_SCHEDULE = {
     4: [
         ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
         ("07:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
-        ("07:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("08:00", "Говори Доверяй Чувствуй", "https://t.me/govori_vda"),
         ("08:00", "Единство утро", "https://t.me/ACAgroupUnityMoscow"),
         ("09:00", "Доверие", "https://t.me/VDADoverie"),
@@ -163,7 +154,6 @@ ONLINE_SCHEDULE = {
         ("18:00", "Весна", "https://t.me/vdavesna_2021"),
         ("19:00", "Братский Круг", "https://t.me/+uEG2E5FVndA0YTc6"),
         ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
-        ("19:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("20:00", "Феникс", "https://t.me/+1GAp8vi4hyNmMzUy"),
         ("20:00", "Доверие (Любящий Родитель)", "https://t.me/VDADoverie"),
         ("21:00", "ДЫШИ!", "https://t.me/breathelivebe"),
@@ -187,7 +177,6 @@ ONLINE_SCHEDULE = {
     ],
     6: [
         ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
-        ("07:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("08:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
         ("10:00", "ВДА НСК онлайн", "https://t.me/VDANsk"),
         ("12:00", "Только сегодня (MAX)", "https://max.ru/join/y25EwyRl_K_F1OeJv5JbewpRpww71IKfWS-gwtTB65Q"),
@@ -200,7 +189,6 @@ ONLINE_SCHEDULE = {
         ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
         ("19:30", "Эффект бабочки", "https://t.me/+FcaUkHDOuMpkMTI8"),
         ("20:00", "Огоньки", "https://t.me/ogonki2025"),
-        ("20:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
     ],
@@ -216,6 +204,16 @@ def add_online_group(day_indices: Iterable[int], time_str: str, name: str, url: 
 
 # Дополнительные онлайн-группы, добавленные вручную.
 # ONLINE_SCHEDULE хранит только время начала, поэтому окончание собрания здесь не указывается.
+
+# Временное расписание группы «Маяк ВДА» на неделю 18–24 мая.
+# Без имён ведущих и дополнительных пояснений.
+add_online_group([0], "19:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy")
+add_online_group([1], "20:40", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy")
+add_online_group([2], "08:30", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy")
+add_online_group([2], "19:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy")
+add_online_group([4], "19:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy")
+add_online_group([6], "20:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy")
+
 add_online_group([3], "20:15", "ВДА онлайн Минск", "https://t.me/+iIAYtReKyd04YTdi")
 
 # БШН: программная группа, основанная на традициях ВДА.
