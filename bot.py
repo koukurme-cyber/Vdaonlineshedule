@@ -1501,7 +1501,46 @@ def build_remaining_root_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def build_remaining_live_root_keyboard(user_data: Optional[dict] = None) -> InlineKeyboardMarkup:
+def get_all_live_locations() -> List[Tuple[str, str]]:
+    locations = {(g["country"], g["city"]) for g in LIVE_GROUPS}
+    return sorted(
+        locations,
+        key=lambda x: (x[0] != "Россия", city_sort_key(x[1]), x[0].lower()),
+    )
+
+
+def remaining_locations_page_title(page: int, total_items: int) -> str:
+    if total_items <= CITY_PAGE_SIZE:
+        return "🏙 <b>Ближайшие живые встречи</b>\n\nВыберите город:"
+    max_page = (total_items - 1) // CITY_PAGE_SIZE
+    return f"🏙 <b>Ближайшие живые встречи</b>\n\nВыберите город · стр. {page + 1}/{max_page + 1}"
+
+
+def add_remaining_location_page_buttons(builder: InlineKeyboardBuilder, page: int) -> Tuple[int, int]:
+    locations = get_all_live_locations()
+    page = clamp_page(page, len(locations))
+    start = page * CITY_PAGE_SIZE
+    end = start + CITY_PAGE_SIZE
+    for country, city in locations[start:end]:
+        builder.button(text=get_country_city_label(country, city), callback_data=f"remaininglivecity{get_location_id(city, country)}")
+    builder.adjust(2)
+    return page, len(locations)
+
+
+def add_remaining_location_pagination_buttons(builder: InlineKeyboardBuilder, page: int, total_items: int) -> None:
+    if total_items <= CITY_PAGE_SIZE:
+        return
+    max_page = (total_items - 1) // CITY_PAGE_SIZE
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="← Предыдущие", callback_data=f"remaininglivecities:p{page - 1}"))
+    if page < max_page:
+        nav.append(InlineKeyboardButton(text="Следующие →", callback_data=f"remaininglivecities:p{page + 1}"))
+    if nav:
+        builder.row(*nav)
+
+
+def build_remaining_live_root_keyboard(user_data: Optional[dict] = None, page: int = 0) -> InlineKeyboardMarkup:
     user_data = user_data or {}
     builder = InlineKeyboardBuilder()
     if user_data.get("city"):
@@ -1509,7 +1548,9 @@ def build_remaining_live_root_keyboard(user_data: Optional[dict] = None) -> Inli
             text=f"🏙 Мой город: {get_country_city_label(user_data.get('country'), user_data['city'])}",
             callback_data="remaininglivemycity",
         ))
-    builder.row(InlineKeyboardButton(text="🌍 Выбрать страну", callback_data="remaininglivechoosecountry"))
+    page, total = add_remaining_location_page_buttons(builder, page)
+    add_remaining_location_pagination_buttons(builder, page, total)
+    builder.row(InlineKeyboardButton(text="🌍 Выбор по странам", callback_data="remaininglivechoosecountry"))
     builder.row(InlineKeyboardButton(text="← К ближайшим", callback_data="remainingtoday"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
@@ -3238,11 +3279,30 @@ async def remaining_online_callback(callback: CallbackQuery):
 
 @DP.callback_query(F.data == "remaininglive")
 async def remaining_live_callback(callback: CallbackQuery):
+    page = 0
+    locations = get_all_live_locations()
     await send_or_edit(
         callback,
-        "🏙 <b>Ближайшие живые встречи</b>\n\nВыберите город:",
+        remaining_locations_page_title(page, len(locations)),
         parse_mode=HTML_MODE,
-        reply_markup=build_remaining_live_root_keyboard(get_user_sub(str(callback.from_user.id))),
+        reply_markup=build_remaining_live_root_keyboard(get_user_sub(str(callback.from_user.id)), page),
+    )
+
+
+@DP.callback_query(F.data.startswith("remaininglivecities"))
+async def remaining_live_cities_callback(callback: CallbackQuery):
+    raw = callback.data[len("remaininglivecities"):]
+    page = 0
+    match = re.search(r":p(\d+)$", raw)
+    if match:
+        page = int(match.group(1))
+    locations = get_all_live_locations()
+    page = clamp_page(page, len(locations))
+    await send_or_edit(
+        callback,
+        remaining_locations_page_title(page, len(locations)),
+        parse_mode=HTML_MODE,
+        reply_markup=build_remaining_live_root_keyboard(get_user_sub(str(callback.from_user.id)), page),
     )
 
 
@@ -3275,11 +3335,12 @@ async def remaining_live_my_city_callback(callback: CallbackQuery):
     user_data = get_user_sub(str(callback.from_user.id))
     city = user_data.get("city")
     if not city:
+        locations = get_all_live_locations()
         await send_or_edit(
             callback,
-            "🏙 Город ещё не выбран.",
+            "🏙 Город ещё не выбран. Выберите город из списка:",
             parse_mode=HTML_MODE,
-            reply_markup=build_live_country_keyboard(prefix="remaininglivecountry", back_callback="remaininglive"),
+            reply_markup=build_remaining_live_root_keyboard(user_data, 0),
         )
         return
     country = user_data.get("country")
@@ -3296,11 +3357,12 @@ async def remaining_live_my_city_callback(callback: CallbackQuery):
 async def remaining_live_city_back_callback(callback: CallbackQuery):
     cid = callback.data[len("remaininglivecityback"):]
     country, city = resolve_location_id(cid)
+    locations = get_all_live_locations()
     await send_or_edit(
         callback,
-        "🏙 <b>Ближайшие живые встречи</b>\n\nВыберите город:",
+        remaining_locations_page_title(0, len(locations)),
         parse_mode=HTML_MODE,
-        reply_markup=build_remaining_live_root_keyboard({"country": country, "city": city}),
+        reply_markup=build_remaining_live_root_keyboard({"country": country, "city": city}, 0),
     )
 
 
@@ -3312,7 +3374,7 @@ async def remaining_live_city_callback(callback: CallbackQuery):
         callback,
         build_remaining_live_text(city, country),
         parse_mode=HTML_MODE,
-        reply_markup=back_markup("← К городам", f"remaininglivecountry{COUNTRY_TO_ID[country]}" if country in COUNTRY_TO_ID else "remaininglivechoosecountry"),
+        reply_markup=back_markup("← К городам", "remaininglivecities"),
     )
 
 
