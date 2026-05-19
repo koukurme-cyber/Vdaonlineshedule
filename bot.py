@@ -1491,6 +1491,40 @@ def build_live_city_keyboard(country: str, page: int = 0) -> InlineKeyboardMarku
     return builder.as_markup()
 
 
+def build_remaining_root_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="🌐 Онлайн", callback_data="remainingonline"),
+        InlineKeyboardButton(text="🏙 Живые", callback_data="remaininglive"),
+    )
+    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
+    return builder.as_markup()
+
+
+def build_remaining_live_root_keyboard(user_data: Optional[dict] = None) -> InlineKeyboardMarkup:
+    user_data = user_data or {}
+    builder = InlineKeyboardBuilder()
+    if user_data.get("city"):
+        builder.row(InlineKeyboardButton(
+            text=f"🏙 Мой город: {get_country_city_label(user_data.get('country'), user_data['city'])}",
+            callback_data="remaininglivemycity",
+        ))
+    builder.row(InlineKeyboardButton(text="🌍 Выбрать страну", callback_data="remaininglivechoosecountry"))
+    builder.row(InlineKeyboardButton(text="← К ближайшим", callback_data="remainingtoday"))
+    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
+    return builder.as_markup()
+
+
+def build_remaining_live_city_keyboard(country: str, page: int = 0) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    page, _ = add_city_page_buttons(builder, "remaininglivecity", country, page)
+    add_city_pagination_buttons(builder, country, page, "remaininglivecountry")
+    builder.row(InlineKeyboardButton(text="← К странам", callback_data="remaininglivechoosecountry"))
+    builder.row(InlineKeyboardButton(text="← К ближайшим", callback_data="remainingtoday"))
+    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
+    return builder.as_markup()
+
+
 def live_period_keyboard(city: str, country: Optional[str] = None) -> InlineKeyboardMarkup:
     cid = get_location_id(city, country)
     builder = InlineKeyboardBuilder()
@@ -1740,29 +1774,42 @@ def format_remaining_live_line(name: str, address: str, start: str, end: str, is
 def build_remaining_today_text(user_data: dict) -> str:
     now_dt = moscow_now()
     day_name = DAYS[now_dt.weekday()]
-    parts = [f"🕒 <b>Ближайшие сегодня</b> · {escape_html(day_name)}"]
+    return (
+        f"🕒 <b>Ближайшие сегодня</b> · {escape_html(day_name)}\n\n"
+        "Выберите формат встреч:"
+    )
 
+
+def build_remaining_online_text(now_dt: Optional[datetime] = None) -> str:
+    now_dt = now_dt or moscow_now()
+    day_name = DAYS[now_dt.weekday()]
     online_groups = get_remaining_online_today(now_dt)
+    parts = [
+        f"🕒 <b>Ближайшие онлайн сегодня</b> · {escape_html(day_name)}",
+        escape_html(ONLINE_TIME_NOTE),
+    ]
     if online_groups:
-        parts.append(f"\n🌐 <b>Онлайн</b>\n{escape_html(ONLINE_TIME_NOTE)}")
+        parts.append("")
         parts.extend(format_online_group(t, n, u) for t, n, u in online_groups)
-
-    city = user_data.get("city")
-    country = user_data.get("country")
-    live_groups = []
-    if city:
-        live_groups = get_remaining_live_today(city, country, now_dt)
-        parts.append(f"\n🏙 <b>Живые</b> · {escape_html(get_country_city_label(country, city))}")
-        if live_groups:
-            parts.extend(format_remaining_live_line(n, a, s, e, w) for n, a, s, e, w in live_groups)
-        else:
-            parts.append("На сегодня живых встреч больше нет.")
     else:
-        parts.append("\n🏙 <b>Живые</b>\nДля живых встреч сначала выберите город в разделе «Живые встречи».")
+        parts.append("\nНа сегодня онлайн-встреч больше нет.")
+    return "\n".join(parts)
 
-    if not online_groups and city and not live_groups:
-        return f"🕒 <b>Ближайшие сегодня</b> · {escape_html(day_name)}\n\nНа сегодня встреч больше нет."
 
+def build_remaining_live_text(city: str, country: Optional[str] = None, now_dt: Optional[datetime] = None) -> str:
+    now_dt = now_dt or moscow_now()
+    day_name = DAYS[now_dt.weekday()]
+    live_groups = get_remaining_live_today(city, country, now_dt)
+    city_label = get_country_city_label(country, city)
+    parts = [
+        f"🕒 <b>Ближайшие живые сегодня</b> · {escape_html(day_name)}",
+        f"🏙 <b>{escape_html(city_label)}</b>",
+    ]
+    if live_groups:
+        parts.append("")
+        parts.extend(format_remaining_live_line(n, a, s, e, w) for n, a, s, e, w in live_groups)
+    else:
+        parts.append("\nНа сегодня живых встреч в этом городе больше нет.")
     return "\n".join(parts)
 
 
@@ -3167,13 +3214,115 @@ async def btn_notification_settings(message: Message):
     await message.answer(render_settings_root_text(user_data), parse_mode=HTML_MODE, reply_markup=build_settings_root_menu(user_data))
 
 
+@DP.callback_query(F.data == "remainingtoday")
+async def remaining_today_callback(callback: CallbackQuery):
+    await send_or_edit(
+        callback,
+        build_remaining_today_text(get_user_sub(str(callback.from_user.id))),
+        parse_mode=HTML_MODE,
+        disable_web_page_preview=True,
+        reply_markup=build_remaining_root_keyboard(),
+    )
+
+
+@DP.callback_query(F.data == "remainingonline")
+async def remaining_online_callback(callback: CallbackQuery):
+    await send_or_edit(
+        callback,
+        build_remaining_online_text(),
+        parse_mode=HTML_MODE,
+        disable_web_page_preview=True,
+        reply_markup=back_markup("← К ближайшим", "remainingtoday"),
+    )
+
+
+@DP.callback_query(F.data == "remaininglive")
+async def remaining_live_callback(callback: CallbackQuery):
+    await send_or_edit(
+        callback,
+        "🏙 <b>Ближайшие живые встречи</b>\n\nВыберите город:",
+        parse_mode=HTML_MODE,
+        reply_markup=build_remaining_live_root_keyboard(get_user_sub(str(callback.from_user.id))),
+    )
+
+
+@DP.callback_query(F.data == "remaininglivechoosecountry")
+async def remaining_live_choose_country_callback(callback: CallbackQuery):
+    await send_or_edit(
+        callback,
+        "🌍 Выберите страну:",
+        parse_mode=HTML_MODE,
+        reply_markup=build_live_country_keyboard(prefix="remaininglivecountry", back_callback="remaininglive"),
+    )
+
+
+@DP.callback_query(F.data.startswith("remaininglivecountry"))
+async def remaining_live_choose_city_callback(callback: CallbackQuery):
+    country_id, page = parse_country_page(callback.data[len("remaininglivecountry"):])
+    country = ID_TO_COUNTRY.get(country_id, country_id)
+    total = len(get_cities_for_country(country))
+    page = clamp_page(page, total)
+    await send_or_edit(
+        callback,
+        city_page_title(country, page, total),
+        parse_mode=HTML_MODE,
+        reply_markup=build_remaining_live_city_keyboard(country, page),
+    )
+
+
+@DP.callback_query(F.data == "remaininglivemycity")
+async def remaining_live_my_city_callback(callback: CallbackQuery):
+    user_data = get_user_sub(str(callback.from_user.id))
+    city = user_data.get("city")
+    if not city:
+        await send_or_edit(
+            callback,
+            "🏙 Город ещё не выбран.",
+            parse_mode=HTML_MODE,
+            reply_markup=build_live_country_keyboard(prefix="remaininglivecountry", back_callback="remaininglive"),
+        )
+        return
+    country = user_data.get("country")
+    cid = get_location_id(city, country)
+    await send_or_edit(
+        callback,
+        build_remaining_live_text(city, country),
+        parse_mode=HTML_MODE,
+        reply_markup=back_markup("← К выбору города", f"remaininglivecityback{cid}"),
+    )
+
+
+@DP.callback_query(F.data.startswith("remaininglivecityback"))
+async def remaining_live_city_back_callback(callback: CallbackQuery):
+    cid = callback.data[len("remaininglivecityback"):]
+    country, city = resolve_location_id(cid)
+    await send_or_edit(
+        callback,
+        "🏙 <b>Ближайшие живые встречи</b>\n\nВыберите город:",
+        parse_mode=HTML_MODE,
+        reply_markup=build_remaining_live_root_keyboard({"country": country, "city": city}),
+    )
+
+
+@DP.callback_query(F.data.startswith("remaininglivecity"))
+async def remaining_live_city_callback(callback: CallbackQuery):
+    cid = callback.data[len("remaininglivecity"):]
+    country, city = resolve_location_id(cid)
+    await send_or_edit(
+        callback,
+        build_remaining_live_text(city, country),
+        parse_mode=HTML_MODE,
+        reply_markup=back_markup("← К городам", f"remaininglivecountry{COUNTRY_TO_ID[country]}" if country in COUNTRY_TO_ID else "remaininglivechoosecountry"),
+    )
+
+
 @DP.message(F.text == "🕒 Ближайшие")
 async def btn_remaining_today(message: Message):
     await message.answer(
         build_remaining_today_text(get_user_sub(str(message.from_user.id))),
         parse_mode=HTML_MODE,
         disable_web_page_preview=True,
-        reply_markup=back_markup("⬅️ Главное меню", "mainmenu"),
+        reply_markup=build_remaining_root_keyboard(),
     )
 
 
