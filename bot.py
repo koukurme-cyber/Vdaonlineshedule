@@ -1324,12 +1324,12 @@ def has_live_subscriptions(user_data: dict) -> bool:
 
 
 def format_online_group(time_str: str, name: str, url: str) -> str:
-    return f'🟠 <b>{time_str}</b> — <a href="{url}">{escape_html(name)}</a>'
+    return f'• <b>{time_str}</b> — <a href="{url}">{escape_html(name)}</a>'
 
 
 def format_online_group_with_sub(time_str: str, name: str, url: str, user_data: dict) -> str:
     bell = " 🔔" if is_user_subscribed_to_online(user_data, name) else ""
-    return f'🟠 <b>{time_str}</b> — <a href="{url}">{escape_html(name)}</a>{bell}'
+    return f'• <b>{time_str}</b> — <a href="{url}">{escape_html(name)}</a>{bell}'
 
 
 def format_live_group(name: str, address: str, start: str, end: str, is_work_meeting: bool = False) -> str:
@@ -1784,12 +1784,13 @@ def _trim_daily_items(items: list, limit: int = DAILY_SUMMARY_LIMIT):
 
 
 def format_live_group_for_daily_summary(name: str, address: str, start: str, end: str, is_work_meeting: bool = False) -> str:
-    """Compact live-group line for morning summary."""
+    """Compact two-line live-group block for morning summary."""
     label = " 🔧" if is_work_meeting else ""
     hint = compact_address_hint(address, max_len=54)
+    first_line = f"• <b>{escape_html(start)}–{escape_html(end)}</b> — {escape_html(name)}{label}"
     if hint and hint != "адрес не указан":
-        return f"• <b>{escape_html(start)}–{escape_html(end)}</b> — {escape_html(name)}{label} — {escape_html(hint)}"
-    return f"• <b>{escape_html(start)}–{escape_html(end)}</b> — {escape_html(name)}{label}"
+        return f"{first_line}\n  {escape_html(hint)}"
+    return first_line
 
 
 def build_daily_message(
