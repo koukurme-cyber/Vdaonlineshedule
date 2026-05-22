@@ -1406,8 +1406,9 @@ def build_live_root_keyboard(user_data: Optional[dict] = None) -> InlineKeyboard
             text=f"🏙 Мой город: {get_country_city_label(user_data.get('country'), user_data['city'])}",
             callback_data="livemycity",
         ))
-    builder.row(InlineKeyboardButton(text="🌍 Выбрать страну", callback_data="livechoosecountry"))
-    builder.row(InlineKeyboardButton(text="🔎 Найти группу или город", callback_data="searchgroup"))
+    builder.row(InlineKeyboardButton(text="🔎 Найти город или группу", callback_data="searchgroup"))
+    builder.row(InlineKeyboardButton(text="📋 Показать все города", callback_data="liveallcities"))
+    builder.row(InlineKeyboardButton(text="🌍 Выбор по странам", callback_data="livechoosecountry"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
@@ -1418,7 +1419,6 @@ def build_online_menu_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="📋 Неделя", callback_data="onlinefull"),
     )
     builder.row(InlineKeyboardButton(text="📆 Выбрать день", callback_data="onlinechooseday"))
-    builder.row(InlineKeyboardButton(text="🔎 Найти группу или город", callback_data="searchgroup"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
@@ -1487,6 +1487,41 @@ def build_live_city_keyboard(country: str, page: int = 0) -> InlineKeyboardMarku
     page, _ = add_city_page_buttons(builder, "livecity", country, page)
     add_city_pagination_buttons(builder, country, page, "livecountry")
     builder.row(InlineKeyboardButton(text="← К странам", callback_data="livechoosecountry"))
+    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
+    return builder.as_markup()
+
+
+def all_live_locations_page_title(page: int, total_items: int) -> str:
+    if total_items <= CITY_PAGE_SIZE:
+        return "🏙 <b>Все города</b>\n\nВыберите город:"
+    max_page = (total_items - 1) // CITY_PAGE_SIZE
+    return f"🏙 <b>Все города</b> · стр. {page + 1}/{max_page + 1}\n\nВыберите город:"
+
+
+def build_all_live_locations_keyboard(page: int = 0) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    locations = get_all_live_locations()
+    page = clamp_page(page, len(locations), CITY_PAGE_SIZE)
+    start = page * CITY_PAGE_SIZE
+    end = start + CITY_PAGE_SIZE
+
+    for country, city in locations[start:end]:
+        builder.button(
+            text=get_country_city_label(country, city),
+            callback_data=f"livecity{get_location_id(city, country)}",
+        )
+    builder.adjust(2)
+
+    max_page = max(0, (len(locations) - 1) // CITY_PAGE_SIZE) if locations else 0
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="← Предыдущие", callback_data=f"liveallcities:p{page - 1}"))
+    if page < max_page:
+        nav.append(InlineKeyboardButton(text="Следующие →", callback_data=f"liveallcities:p{page + 1}"))
+    if nav:
+        builder.row(*nav)
+
+    builder.row(InlineKeyboardButton(text="← К живым встречам", callback_data="modelive"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
@@ -2157,14 +2192,14 @@ async def notifications_worker(bot: Bot):
 
 SUBSCRIPTION_PAGE_SIZE = 6
 
-def clamp_page(page: int, total_items: int, page_size: int = SUBSCRIPTION_PAGE_SIZE) -> int:
+def clamp_subscription_page(page: int, total_items: int, page_size: int = SUBSCRIPTION_PAGE_SIZE) -> int:
     if total_items <= 0:
         return 0
     max_page = max(0, (total_items - 1) // page_size)
     return max(0, min(int(page or 0), max_page))
 
 def page_slice(items: list, page: int, page_size: int = SUBSCRIPTION_PAGE_SIZE):
-    page = clamp_page(page, len(items), page_size)
+    page = clamp_subscription_page(page, len(items), page_size)
     start = page * page_size
     end = start + page_size
     return page, items[start:end], max(1, (len(items) + page_size - 1) // page_size)
@@ -2702,6 +2737,23 @@ async def search_set_city_callback(callback: CallbackQuery):
 @DP.callback_query(F.data == "livechoosecountry")
 async def live_choose_country_callback(callback: CallbackQuery):
     await send_or_edit(callback, "🌍 Выберите страну:", parse_mode=HTML_MODE, reply_markup=build_live_country_keyboard())
+
+
+@DP.callback_query(F.data.startswith("liveallcities"))
+async def live_all_cities_callback(callback: CallbackQuery):
+    raw = callback.data[len("liveallcities"):]
+    page = 0
+    match = re.search(r":p(\d+)$", raw)
+    if match:
+        page = int(match.group(1))
+    locations = get_all_live_locations()
+    page = clamp_page(page, len(locations), CITY_PAGE_SIZE)
+    await send_or_edit(
+        callback,
+        all_live_locations_page_title(page, len(locations)),
+        parse_mode=HTML_MODE,
+        reply_markup=build_all_live_locations_keyboard(page),
+    )
 
 
 @DP.callback_query(F.data.startswith("livecountry"))
