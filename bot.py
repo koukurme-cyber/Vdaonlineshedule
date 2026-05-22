@@ -2694,11 +2694,14 @@ async def search_group_input(message: Message, state: FSMContext):
 async def search_full_city_callback(callback: CallbackQuery):
     location_id = callback.data[len("searchcityfull"):]
     country, city = resolve_location_id(location_id)
-    await send_or_edit(
+    text = format_full_city_search_results(country, city)
+    await send_long_text(
         callback,
-        format_full_city_search_results(country, city),
+        None,
+        text,
+        final_markup=back_markup("⬅️ Главное меню", "mainmenu"),
         parse_mode=HTML_MODE,
-        reply_markup=back_markup("⬅️ Главное меню", "mainmenu"),
+        disable_web_page_preview=True,
     )
 
 
