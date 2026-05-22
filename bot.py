@@ -1407,7 +1407,7 @@ def build_live_root_keyboard(user_data: Optional[dict] = None) -> InlineKeyboard
             callback_data="livemycity",
         ))
     builder.row(InlineKeyboardButton(text="🔎 Найти город или группу", callback_data="searchgroup"))
-    builder.row(InlineKeyboardButton(text="📋 Показать все города", callback_data="liveallcities"))
+    builder.row(InlineKeyboardButton(text="📋 Показать все города", callback_data="liveallcities:0"))
     builder.row(InlineKeyboardButton(text="🌍 Выбор по странам", callback_data="livechoosecountry"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
@@ -1515,9 +1515,9 @@ def build_all_live_locations_keyboard(page: int = 0) -> InlineKeyboardMarkup:
     max_page = max(0, (len(locations) - 1) // CITY_PAGE_SIZE) if locations else 0
     nav = []
     if page > 0:
-        nav.append(InlineKeyboardButton(text="← Предыдущие", callback_data=f"liveallcities:p{page - 1}"))
+        nav.append(InlineKeyboardButton(text="← Предыдущие", callback_data=f"liveallcities:{page - 1}"))
     if page < max_page:
-        nav.append(InlineKeyboardButton(text="Следующие →", callback_data=f"liveallcities:p{page + 1}"))
+        nav.append(InlineKeyboardButton(text="Следующие →", callback_data=f"liveallcities:{page + 1}"))
     if nav:
         builder.row(*nav)
 
@@ -2739,13 +2739,13 @@ async def live_choose_country_callback(callback: CallbackQuery):
     await send_or_edit(callback, "🌍 Выберите страну:", parse_mode=HTML_MODE, reply_markup=build_live_country_keyboard())
 
 
-@DP.callback_query(F.data.startswith("liveallcities"))
+@DP.callback_query(F.data.startswith("liveallcities:"))
 async def live_all_cities_callback(callback: CallbackQuery):
-    raw = callback.data[len("liveallcities"):]
-    page = 0
-    match = re.search(r":p(\d+)$", raw)
-    if match:
-        page = int(match.group(1))
+    raw = callback.data.split(":", 1)[1]
+    try:
+        page = int(raw)
+    except Exception:
+        page = 0
     locations = get_all_live_locations()
     page = clamp_page(page, len(locations), CITY_PAGE_SIZE)
     await send_or_edit(
@@ -2753,6 +2753,17 @@ async def live_all_cities_callback(callback: CallbackQuery):
         all_live_locations_page_title(page, len(locations)),
         parse_mode=HTML_MODE,
         reply_markup=build_all_live_locations_keyboard(page),
+    )
+
+# Совместимость со старой кнопкой из предыдущей сборки.
+@DP.callback_query(F.data == "liveallcities")
+async def live_all_cities_legacy_callback(callback: CallbackQuery):
+    locations = get_all_live_locations()
+    await send_or_edit(
+        callback,
+        all_live_locations_page_title(0, len(locations)),
+        parse_mode=HTML_MODE,
+        reply_markup=build_all_live_locations_keyboard(0),
     )
 
 
