@@ -1338,16 +1338,25 @@ def build_search_results_keyboard(query: str) -> InlineKeyboardMarkup:
         country, city = city_matches[0]
         location_id = get_location_id(city, country)
         label = get_country_city_label(country, city)
-        builder.row(InlineKeyboardButton(text=f"Показать расписание: {label}", callback_data=f"searchshowcity{location_id}"))
+        # Полный список единственного найденного города уже показан в тексте.
+        # Оставляем только действия, которые реально добавляют новый сценарий.
+        builder.row(InlineKeyboardButton(text=f"Расписание по дням: {label}", callback_data=f"searchshowcity{location_id}"))
         builder.row(InlineKeyboardButton(text="Выбрать как мой город", callback_data=f"searchsetcity{location_id}"))
     else:
         primary_cities, secondary_cities = split_primary_city_matches(query, city_matches)
-        ordered_cities = primary_cities + secondary_cities
-        for country, city in ordered_cities:
-            groups = get_live_groups_for_city(city, country)
+
+        # Основной город при запросах вроде «СПб» уже раскрыт карточками в сообщении,
+        # поэтому кнопку «Показать все» для него не дублируем.
+        for country, city in secondary_cities:
             label = get_country_city_label(country, city)
-            button_text = f"Показать все: {label}" if len(groups) > 5 else f"Показать: {label}"
-            builder.row(InlineKeyboardButton(text=button_text, callback_data=f"searchcityfull{get_location_id(city, country)}"))
+            builder.row(InlineKeyboardButton(text=f"Показать: {label}", callback_data=f"searchcityfull{get_location_id(city, country)}"))
+
+        # Для основного города оставляем полезные действия без повтора полного списка.
+        for country, city in primary_cities:
+            location_id = get_location_id(city, country)
+            label = get_country_city_label(country, city)
+            builder.row(InlineKeyboardButton(text=f"Расписание по дням: {label}", callback_data=f"searchshowcity{location_id}"))
+            builder.row(InlineKeyboardButton(text=f"Выбрать как мой город: {label}", callback_data=f"searchsetcity{location_id}"))
 
     if online_matches:
         builder.row(InlineKeyboardButton(text="Перейти к онлайн-подпискам", callback_data="subonline"))
