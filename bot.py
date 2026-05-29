@@ -1182,6 +1182,28 @@ def format_live_search_line(group: dict, include_city: bool = True, indent: bool
     return f"{prefix} <b>{escape_html(group['name'])}</b>{city_part}; {days_text}"
 
 
+def format_live_group_card_for_city_list(index: int, group: dict) -> str:
+    """Readable card for full city search results."""
+    name = escape_html(group.get("name", ""))
+    schedule = escape_html(format_group_days_for_search(group, limit=30))
+    address = escape_html(group.get("address", "") or "адрес не указан")
+    return (
+        f"<b>{index}. {name}</b>\n"
+        f"🕒 {schedule}\n"
+        f"📍 {address}"
+    )
+
+
+def format_city_preview_line(index: int, group: dict) -> str:
+    """Short line for search result previews inside a city match."""
+    name = escape_html(group.get("name", ""))
+    schedule = escape_html(format_group_days_for_search(group, limit=3))
+    hint = escape_html(compact_address_hint(group.get("address", ""), max_len=46))
+    if hint and hint != "адрес не указан":
+        return f"  {index}. <b>{name}</b> — {schedule} — {hint}"
+    return f"  {index}. <b>{name}</b> — {schedule}"
+
+
 def plural_ru(number: int, one: str, few: str, many: str) -> str:
     number_abs = abs(int(number))
     if 11 <= number_abs % 100 <= 14:
@@ -1213,8 +1235,8 @@ def format_search_results(query: str) -> str:
             count = len(groups)
             count_text = f" — {group_count_text(count)}" if count else ""
             lines.append(f"• <b>{escape_html(get_country_city_label(country, city))}</b>{escape_html(count_text)}")
-            for group in sorted(groups, key=lambda g: g.get("name", "").lower())[:5]:
-                lines.append(format_live_search_line(group, include_city=False, indent=True))
+            for idx, group in enumerate(sorted(groups, key=lambda g: g.get("name", "").lower())[:5], start=1):
+                lines.append(format_city_preview_line(idx, group))
             if count > 5:
                 lines.append(f"  Показаны первые 5. Полный список — кнопкой ниже.")
         if len(city_matches) > 10:
@@ -1284,14 +1306,25 @@ def build_search_results_keyboard(query: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def build_search_retry_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🔎 Ввести группу или город", callback_data="searchgroup"))
+    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
+    return builder.as_markup()
+
+
 def format_full_city_search_results(country: Optional[str], city: str) -> str:
     groups = sorted(get_live_groups_for_city(city, country), key=lambda g: g.get("name", "").lower())
     if not groups:
         return f"В городе «{escape_html(get_country_city_label(country, city))}» живых групп не найдено."
-    lines = [f"📍 <b>{escape_html(get_country_city_label(country, city))}</b>", f"Групп: <b>{len(groups)}</b>"]
-    for group in groups:
-        lines.append(format_live_search_line(group, include_city=False, indent=False))
-    return "\n".join(lines)
+
+    lines = [
+        f"📍 <b>{escape_html(get_country_city_label(country, city))}</b>",
+        f"Групп: <b>{len(groups)}</b>",
+        "",
+    ]
+    lines.extend(format_live_group_card_for_city_list(i, group) for i, group in enumerate(groups, start=1))
+    return "\n\n".join(lines)
 
 def get_user_sub(uid: str) -> dict:
     return STORE.get_user(uid)
@@ -2680,8 +2713,23 @@ async def search_group_input(message: Message, state: FSMContext):
     await state.clear()
     query = (message.text or "").strip()
     if len(query) < 2:
-        await message.answer("Введите минимум 2 символа.", reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
+        await message.answer(
+            "Введите минимум 2 символа.",
+            reply_markup=build_search_retry_keyboard(),
+        )
         return
+
+    city_matches = get_searchable_cities(query)
+    online_matches = collect_online_group_matches(query)
+    live_matches = collect_live_group_matches(query)
+    if not city_matches and not online_matches and not live_matches:
+        await message.answer(
+            f"По запросу «{escape_html(query)}» ничего не найдено.",
+            parse_mode=HTML_MODE,
+            reply_markup=build_search_retry_keyboard(),
+        )
+        return
+
     await message.answer(
         format_search_results(query),
         parse_mode=HTML_MODE,
