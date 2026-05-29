@@ -2672,7 +2672,7 @@ async def main_live_callback(callback: CallbackQuery):
 @DP.callback_query(F.data == "searchgroup")
 async def search_group_callback(callback: CallbackQuery, state: FSMContext):
     await state.set_state(GroupNameSearch.waiting_for_name)
-    await send_or_edit(callback, "Введите название группы или город:", reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
+    await send_or_edit(callback, "Введите название группы или город:")
 
 
 @DP.message(StateFilter(GroupNameSearch.waiting_for_name))
@@ -3475,7 +3475,7 @@ async def btn_unsubscribe_all(message: Message):
 @DP.message(F.text == "🔍 Найти группу")
 async def btn_search_group(message: Message, state: FSMContext):
     await state.set_state(GroupNameSearch.waiting_for_name)
-    await message.answer("Введите название группы или город:", reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
+    await message.answer("Введите название группы или город:")
 
 
 @DP.message()
