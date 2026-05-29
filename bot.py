@@ -1219,6 +1219,60 @@ def plural_ru(number: int, one: str, few: str, many: str) -> str:
 def group_count_text(count: int) -> str:
     return f"{count} {plural_ru(count, 'группа', 'группы', 'групп')}"
 
+def is_spb_query(query: str) -> bool:
+    q = normalize_search_query(query).replace("ё", "е")
+    return q in {"спб", "spb", "питер", "петербург", "санкт петербург", "санкт-петербург"}
+
+
+def is_spb_main_city(city: str) -> bool:
+    return normalize_city_for_sort(city).replace("ё", "е") == "санкт-петербург"
+
+
+def is_spb_area_city(city: str) -> bool:
+    city_norm = normalize_city_for_sort(city).replace("ё", "е")
+    spb_area = {
+        "пушкин", "петергоф", "колпино", "всеволожск", "выборг", "кириши",
+        "пушкин (спб)", "петергоф (спб)", "колпино (спб)",
+    }
+    return city_norm in spb_area or "(спб)" in city.lower()
+
+
+def format_city_header_for_search(country: Optional[str], city: str, groups: List[dict]) -> List[str]:
+    return [
+        f"📍 <b>{escape_html(get_country_city_label(country, city))}</b>",
+        f"Групп: <b>{len(groups)}</b>",
+        "",
+    ]
+
+
+def format_city_cards_for_search(country: Optional[str], city: str, start_index: int = 1) -> str:
+    groups = sorted(get_live_groups_for_city(city, country), key=lambda g: g.get("name", "").lower())
+    if not groups:
+        return f"В городе «{escape_html(get_country_city_label(country, city))}» живых групп не найдено."
+    lines = format_city_header_for_search(country, city, groups)
+    lines.extend(
+        format_live_group_card_for_city_list(i, group)
+        for i, group in enumerate(groups, start=start_index)
+    )
+    return "\n\n".join(lines)
+
+
+def format_city_compact_line(country: Optional[str], city: str) -> str:
+    groups = get_live_groups_for_city(city, country)
+    return f"• <b>{escape_html(get_country_city_label(country, city))}</b> — {escape_html(group_count_text(len(groups)))}"
+
+
+def split_primary_city_matches(query: str, city_matches: List[Tuple[str, str]]) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
+    # Для СПб основной город показываем отдельно, а Колпино/Пушкин/Петергоф и т.п. — отдельным блоком.
+    if is_spb_query(query):
+        primary = [(country, city) for country, city in city_matches if is_spb_main_city(city)]
+        secondary = [(country, city) for country, city in city_matches if not is_spb_main_city(city)]
+        return primary[:1], secondary
+    if len(city_matches) == 1:
+        return city_matches, []
+    return [], city_matches
+
+
 def format_search_results(query: str) -> str:
     city_matches = get_searchable_cities(query)
     online_matches = collect_online_group_matches(query)
@@ -1229,19 +1283,22 @@ def format_search_results(query: str) -> str:
     lines = [f"🔎 <b>Поиск:</b> {escape_html(query)}"]
 
     if city_matches:
-        lines.append("\n📍 <b>Города</b>")
-        for country, city in sorted(city_matches, key=lambda x: (x[0] != "Россия", x[0].lower(), city_sort_key(x[1])))[:10]:
-            groups = get_live_groups_for_city(city, country)
-            count = len(groups)
-            count_text = f" — {group_count_text(count)}" if count else ""
-            lines.append(f"• <b>{escape_html(get_country_city_label(country, city))}</b>{escape_html(count_text)}")
-            for idx, group in enumerate(sorted(groups, key=lambda g: g.get("name", "").lower())[:5], start=1):
-                lines.append(format_city_preview_line(idx, group))
-            if count > 5:
-                lines.append(f"  Показаны первые 5. Полный список — кнопкой ниже.")
-        if len(city_matches) > 10:
-            extra_cities = len(city_matches) - 10
-            lines.append(f"…и ещё {extra_cities} {plural_ru(extra_cities, 'город', 'города', 'городов')}. Уточните запрос.")
+        city_matches = sorted(city_matches, key=lambda x: (x[0] != "Россия", x[0].lower(), city_sort_key(x[1])))
+        primary_cities, secondary_cities = split_primary_city_matches(query, city_matches)
+
+        if primary_cities:
+            country, city = primary_cities[0]
+            lines.append("")
+            lines.append(format_city_cards_for_search(country, city))
+
+        if secondary_cities:
+            title = "🏘 <b>Отдельно рядом</b>" if primary_cities else "📍 <b>Найденные города</b>"
+            lines.append(f"\n{title}")
+            for country, city in secondary_cities[:12]:
+                lines.append(format_city_compact_line(country, city))
+            if len(secondary_cities) > 12:
+                extra_cities = len(secondary_cities) - 12
+                lines.append(f"…и ещё {extra_cities} {plural_ru(extra_cities, 'город', 'города', 'городов')}. Уточните запрос.")
 
     if online_matches:
         lines.append("\n🌐 <b>Онлайн</b>")
@@ -1257,9 +1314,9 @@ def format_search_results(query: str) -> str:
             lines.append(f"…и ещё {extra_online} онлайн-{plural_ru(extra_online, 'группа', 'группы', 'групп')}.")
 
     if live_matches:
-        lines.append("\n🏙 <b>Живые</b>")
-        for group in live_matches[:20]:
-            lines.append(format_live_search_line(group, include_city=True, indent=False))
+        lines.append("\n🏙 <b>Живые группы по названию</b>")
+        for idx, group in enumerate(live_matches[:20], start=1):
+            lines.append(format_live_group_card_for_city_list(idx, group))
         if len(live_matches) > 20:
             extra_live = len(live_matches) - 20
             lines.append(f"…и ещё {extra_live} {plural_ru(extra_live, 'живая группа', 'живые группы', 'живых групп')}. Уточните запрос.")
@@ -1267,14 +1324,13 @@ def format_search_results(query: str) -> str:
     lines.append("\nДоступные действия — кнопками ниже.")
     return "\n".join(lines)
 
-
 def build_search_results_keyboard(query: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     city_matches = sorted(
         get_searchable_cities(query),
         key=lambda x: (x[0] != "Россия", x[0].lower(), city_sort_key(x[1])),
-    )[:10]
+    )[:12]
     online_matches = collect_online_group_matches(query)
     live_matches = collect_live_group_matches(query)
 
@@ -1283,18 +1339,20 @@ def build_search_results_keyboard(query: str) -> InlineKeyboardMarkup:
         location_id = get_location_id(city, country)
         label = get_country_city_label(country, city)
         builder.row(InlineKeyboardButton(text=f"Показать расписание: {label}", callback_data=f"searchshowcity{location_id}"))
-        builder.row(InlineKeyboardButton(text=f"Выбрать как мой город", callback_data=f"searchsetcity{location_id}"))
+        builder.row(InlineKeyboardButton(text="Выбрать как мой город", callback_data=f"searchsetcity{location_id}"))
     else:
-        for country, city in city_matches:
+        primary_cities, secondary_cities = split_primary_city_matches(query, city_matches)
+        ordered_cities = primary_cities + secondary_cities
+        for country, city in ordered_cities:
             groups = get_live_groups_for_city(city, country)
-            if len(groups) > 5:
-                label = get_country_city_label(country, city)
-                builder.row(InlineKeyboardButton(text=f"Показать все: {label}", callback_data=f"searchcityfull{get_location_id(city, country)}"))
+            label = get_country_city_label(country, city)
+            button_text = f"Показать все: {label}" if len(groups) > 5 else f"Показать: {label}"
+            builder.row(InlineKeyboardButton(text=button_text, callback_data=f"searchcityfull{get_location_id(city, country)}"))
 
     if online_matches:
         builder.row(InlineKeyboardButton(text="Перейти к онлайн-подпискам", callback_data="subonline"))
 
-    if live_matches:
+    if live_matches and not city_matches:
         first = live_matches[0]
         country = first.get("country")
         city = first.get("city", "")
@@ -1304,7 +1362,6 @@ def build_search_results_keyboard(query: str) -> InlineKeyboardMarkup:
 
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
-
 
 def build_search_retry_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
@@ -2730,11 +2787,13 @@ async def search_group_input(message: Message, state: FSMContext):
         )
         return
 
-    await message.answer(
+    await send_long_text(
+        message,
+        None,
         format_search_results(query),
+        final_markup=build_search_results_keyboard(query),
         parse_mode=HTML_MODE,
         disable_web_page_preview=True,
-        reply_markup=build_search_results_keyboard(query),
     )
 
 
