@@ -1263,11 +1263,12 @@ def format_city_compact_line(country: Optional[str], city: str) -> str:
 
 
 def split_primary_city_matches(query: str, city_matches: List[Tuple[str, str]]) -> Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]:
-    # Для СПб основной город показываем отдельно, а Колпино/Пушкин/Петергоф и т.п. — отдельным блоком.
+    # При запросах «СПб», «Питер», «Санкт-Петербург» показываем только сам Санкт-Петербург.
+    # Колпино, Пушкин, Петергоф и другие города с пометкой «(СПб)» не подмешиваем:
+    # пользователь сможет найти их отдельным прямым запросом по названию.
     if is_spb_query(query):
         primary = [(country, city) for country, city in city_matches if is_spb_main_city(city)]
-        secondary = [(country, city) for country, city in city_matches if not is_spb_main_city(city)]
-        return primary[:1], secondary
+        return primary[:1], []
     if len(city_matches) == 1:
         return city_matches, []
     return [], city_matches
