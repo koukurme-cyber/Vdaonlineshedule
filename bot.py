@@ -146,6 +146,7 @@ ONLINE_SCHEDULE = {
         ("19:00", "Артплей (онлайн)", "https://t.me/VDAartPlay"),
         ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
         ("19:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
+        ("20:00", "Четвёртая черта онлайн", "https://t.me/chetvertayacherta"),
         ("21:00", "ДЫШИ!", "https://t.me/breathelivebe"),
         ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
@@ -193,6 +194,7 @@ ONLINE_SCHEDULE = {
         ("12:00", "День за днём", "https://t.me/+BwAsiX1KsGljZjQy"),
         ("12:30", "Мужская ВДА", "https://t.me/+ewtjezZaCtM5YTdi"),
         ("14:00", "Венеция", "https://t.me/joinchat/AocB9y6QC_k2ZjJi"),
+        ("14:00", "Четвёртая черта онлайн", "https://t.me/chetvertayacherta"),
         ("18:00", "Ежедневник ВДА", "https://t.me/VDAOXOTNIRYAD"),
         ("18:00", "Весна", "https://t.me/vdavesna_2021"),
         ("19:00", "Сила и Надежда (WhatsApp)", "https://chat.whatsapp.com/CUc0VVemIvl7Aoe2cuYCav"),
@@ -236,11 +238,6 @@ add_online_group([2, 4, 5], "13:00", "Начало (MAX)", "https://max.ru/join/
 
 # «По шагам Тони А.» теперь также проводится по пятницам в 19:00.
 add_online_group([4], "19:00", "По шагам Тони А.", "https://t.me/+ajasg4oH0SU3MjFi")
-
-# «Четвертая черта» проводится по четвергам и воскресеньям.
-# Темы встреч: ежедневник и текущий опыт выздоровления.
-add_online_group([3], "20:00", "Четвертая черта", "https://t.me/chetvertayacherta")
-add_online_group([6], "14:00", "Четвертая черта", "https://t.me/chetvertayacherta")
 
 
 class SubCitySearch(StatesGroup):
