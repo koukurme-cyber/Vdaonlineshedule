@@ -237,6 +237,11 @@ add_online_group([2, 4, 5], "13:00", "Начало (MAX)", "https://max.ru/join/
 # «По шагам Тони А.» теперь также проводится по пятницам в 19:00.
 add_online_group([4], "19:00", "По шагам Тони А.", "https://t.me/+ajasg4oH0SU3MjFi")
 
+# «Четвертая черта» проводится по четвергам и воскресеньям.
+# Темы встреч: ежедневник и текущий опыт выздоровления.
+add_online_group([3], "20:00", "Четвертая черта", "https://t.me/chetvertayacherta")
+add_online_group([6], "14:00", "Четвертая черта", "https://t.me/chetvertayacherta")
+
 
 class SubCitySearch(StatesGroup):
     waiting_for_city = State()
