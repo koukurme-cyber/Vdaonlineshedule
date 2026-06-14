@@ -1316,6 +1316,13 @@ def format_search_results(query: str) -> str:
             extra_online = len(online_matches) - 20
             lines.append(f"…и ещё {extra_online} онлайн-{plural_ru(extra_online, 'группа', 'группы', 'групп')}.")
 
+    if city_matches:
+        matched_city_keys = set(city_matches)
+        live_matches = [
+            group for group in live_matches
+            if (group.get("country"), group.get("city")) not in matched_city_keys
+        ]
+
     if live_matches:
         lines.append("\n🏙 <b>Живые группы по названию</b>")
         for idx, group in enumerate(live_matches[:20], start=1):
