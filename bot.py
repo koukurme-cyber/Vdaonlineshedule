@@ -1673,7 +1673,6 @@ def build_subscriptions_menu() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="Выбрать онлайн-группы", callback_data="subonline"))
     builder.row(InlineKeyboardButton(text="Выбрать живые группы", callback_data="sublive"))
-    builder.row(InlineKeyboardButton(text="🏙 Выбрать город для живых", callback_data="sublivecitysearch"))
     builder.row(InlineKeyboardButton(text="Настройки подписок", callback_data="settingsroot"))
     builder.row(InlineKeyboardButton(text="🔕 Отписаться от всего", callback_data="mainunsubscribe"))
     builder.row(InlineKeyboardButton(text="← Главное меню", callback_data="mainmenu"))
@@ -2472,11 +2471,26 @@ async def show_sub_online_info(target: CallbackQuery | Message, gid: str, page: 
     )
 
 async def show_sub_live_country_selector(target: CallbackQuery | Message):
+    user_data = get_user_sub(str(target.from_user.id))
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🏙 Выбрать другой город", callback_data="sublivecitysearch"))
+    city = user_data.get("city")
+    country = user_data.get("country")
+
+    if city:
+        builder.row(InlineKeyboardButton(
+            text=f"Открыть текущий город: {get_country_city_label(country, city)}",
+            callback_data="sublivecurrentcity",
+        ))
+
+    builder.row(InlineKeyboardButton(text="🏙 Выбрать город", callback_data="sublivecitysearch"))
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
-    await send_or_edit(target, "🏙 Выберите город через поиск.", parse_mode=HTML_MODE, reply_markup=builder.as_markup())
+    await send_or_edit(
+        target,
+        "🏙 <b>Живые группы</b>\n\nВыберите город для живых подписок.",
+        parse_mode=HTML_MODE,
+        reply_markup=builder.as_markup(),
+    )
 
 
 async def show_sub_live_city_selector(target: CallbackQuery | Message, country: str, page: int = 0):
@@ -2492,7 +2506,6 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str, country
 
     city_groups = sorted(get_live_groups_for_city(city, country), key=lambda g: (g.get("name", "").lower(), compact_address_hint(g.get("address", "")).lower()))
     if not city_groups:
-        builder.row(InlineKeyboardButton(text="🏙 Выбрать другой город", callback_data="sublivecitysearch"))
         builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
         builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
         await send_or_edit(target, f"🏙 <b>{escape_html(city)}</b>\n\nЖивые группы не найдены.", parse_mode=HTML_MODE, reply_markup=builder.as_markup())
@@ -2536,7 +2549,6 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str, country
         if nav:
             builder.row(*nav)
 
-    builder.row(InlineKeyboardButton(text="🏙 Выбрать другой город", callback_data="sublivecitysearch"))
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     await send_or_edit(
@@ -2861,13 +2873,18 @@ async def sub_online_list(callback: CallbackQuery):
 
 @DP.callback_query(F.data == "sublive")
 async def sub_live_start(callback: CallbackQuery):
+    await show_sub_live_country_selector(callback)
+
+
+@DP.callback_query(F.data == "sublivecurrentcity")
+async def sub_live_current_city(callback: CallbackQuery):
     user_data = get_user_sub(str(callback.from_user.id))
     city = user_data.get("city")
     country = user_data.get("country")
-    if city:
-        await show_sub_live_list(callback, city, country)
-    else:
+    if not city:
         await show_sub_live_country_selector(callback)
+        return
+    await show_sub_live_list(callback, city, country)
 
 
 @DP.callback_query(F.data == "sublivecitychange")
