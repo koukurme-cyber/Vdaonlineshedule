@@ -1673,6 +1673,7 @@ def build_subscriptions_menu() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="Выбрать онлайн-группы", callback_data="subonline"))
     builder.row(InlineKeyboardButton(text="Выбрать живые группы", callback_data="sublive"))
+    builder.row(InlineKeyboardButton(text="🏙 Выбрать город для живых", callback_data="sublivecitysearch"))
     builder.row(InlineKeyboardButton(text="Настройки подписок", callback_data="settingsroot"))
     builder.row(InlineKeyboardButton(text="🔕 Отписаться от всего", callback_data="mainunsubscribe"))
     builder.row(InlineKeyboardButton(text="← Главное меню", callback_data="mainmenu"))
@@ -2884,7 +2885,11 @@ async def sub_live_country_selected(callback: CallbackQuery):
 @DP.callback_query(F.data == "sublivecitysearch")
 async def sub_live_city_search(callback: CallbackQuery, state: FSMContext):
     await state.set_state(SubCitySearch.waiting_for_city)
-    await send_or_edit(callback, "Введите город для живых подписок:", reply_markup=back_markup("← К подпискам", "submainback"))
+    await send_or_edit(
+        callback,
+        "Введите город для живых подписок. После выбора откроется список живых групп этого города.",
+        reply_markup=back_markup("← К подпискам", "submainback"),
+    )
 
 
 @DP.message(StateFilter(SubCitySearch.waiting_for_city))
