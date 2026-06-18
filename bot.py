@@ -1354,11 +1354,6 @@ def build_search_results_keyboard(query: str) -> InlineKeyboardMarkup:
             location_id = get_location_id(city, country)
             label = get_country_city_label(country, city)
             builder.row(InlineKeyboardButton(text=f"Расписание: {label}", callback_data=f"searchshowcity{location_id}"))
-        if len(visible_cities) == 1:
-            country, city = visible_cities[0]
-            location_id = get_location_id(city, country)
-            builder.row(InlineKeyboardButton(text="Выбрать как мой город", callback_data=f"searchsetcity{location_id}"))
-
     if online_matches:
         builder.row(InlineKeyboardButton(text="Перейти к онлайн-подпискам", callback_data="subonline"))
 
@@ -1382,6 +1377,14 @@ def build_search_retry_keyboard() -> InlineKeyboardMarkup:
 
 def format_full_city_search_results(country: Optional[str], city: str) -> str:
     return f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>"
+
+
+
+def city_schedule_back_keyboard() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🏙 Выбрать другой город", callback_data="searchgroup"))
+    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
+    return builder.as_markup()
 
 def get_user_sub(uid: str) -> dict:
     return STORE.get_user(uid)
@@ -2736,49 +2739,35 @@ async def search_group_input(message: Message, state: FSMContext):
     )
 
 
+async def show_city_week_from_search(callback: CallbackQuery, location_id: str):
+    country, city = resolve_location_id(location_id)
+    await send_long_text(
+        callback,
+        f"📋 Живые группы на неделю: <b>{escape_html(get_country_city_label(country, city))}</b>",
+        get_live_week(city, country),
+        final_markup=city_schedule_back_keyboard(),
+        parse_mode=HTML_MODE,
+    )
+
+
 @DP.callback_query(F.data.startswith("searchcityfull"))
 async def search_full_city_callback(callback: CallbackQuery):
-    # Совместимость со старыми кнопками: список групп по городу больше не показываем.
+    # Совместимость со старыми кнопками: сразу показываем расписание города.
     location_id = callback.data[len("searchcityfull"):]
-    country, city = resolve_location_id(location_id)
-    await send_or_edit(
-        callback,
-        f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>",
-        parse_mode=HTML_MODE,
-        reply_markup=live_period_keyboard(city, country),
-    )
+    await show_city_week_from_search(callback, location_id)
 
 
 @DP.callback_query(F.data.startswith("searchshowcity"))
 async def search_show_city_callback(callback: CallbackQuery):
     location_id = callback.data[len("searchshowcity"):]
-    country, city = resolve_location_id(location_id)
-    cid = get_location_id(city, country)
-    await send_or_edit(
-        callback,
-        f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>",
-        parse_mode=HTML_MODE,
-        reply_markup=live_period_keyboard(city, country),
-    )
+    await show_city_week_from_search(callback, location_id)
 
 
 @DP.callback_query(F.data.startswith("searchsetcity"))
 async def search_set_city_callback(callback: CallbackQuery):
+    # Старые кнопки «Выбрать как мой город» больше не сохраняют город, а открывают расписание.
     location_id = callback.data[len("searchsetcity"):]
-    country, city = resolve_location_id(location_id)
-
-    uid = str(callback.from_user.id)
-    user_data = get_user_sub(uid)
-    user_data["country"] = country
-    user_data["city"] = city
-    set_user_sub(uid, user_data)
-
-    await send_or_edit(
-        callback,
-        f"Город выбран: <b>{escape_html(get_country_city_label(country, city))}</b>",
-        parse_mode=HTML_MODE,
-        reply_markup=live_period_keyboard(city, country),
-    )
+    await show_city_week_from_search(callback, location_id)
 
 
 @DP.callback_query(F.data == "livechoosecountry")
