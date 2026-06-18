@@ -1368,7 +1368,7 @@ def build_search_results_keyboard(query: str) -> InlineKeyboardMarkup:
         city = first.get("city", "")
         location_id = get_location_id(city, country)
         label = get_country_city_label(country, city)
-        builder.row(InlineKeyboardButton(text=f"Показать город: {label}", callback_data=f"searchshowcity{location_id}"))
+        builder.row(InlineKeyboardButton(text=f"Расписание: {label}", callback_data=f"searchshowcity{location_id}"))
 
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
@@ -1381,17 +1381,7 @@ def build_search_retry_keyboard() -> InlineKeyboardMarkup:
 
 
 def format_full_city_search_results(country: Optional[str], city: str) -> str:
-    groups = sorted(get_live_groups_for_city(city, country), key=lambda g: g.get("name", "").lower())
-    if not groups:
-        return f"В городе «{escape_html(get_country_city_label(country, city))}» живых групп не найдено."
-
-    lines = [
-        f"📍 <b>{escape_html(get_country_city_label(country, city))}</b>",
-        f"Групп: <b>{len(groups)}</b>",
-        "",
-    ]
-    lines.extend(format_live_group_card_for_city_list(i, group) for i, group in enumerate(groups, start=1))
-    return "\n\n".join(lines)
+    return f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>"
 
 def get_user_sub(uid: str) -> dict:
     return STORE.get_user(uid)
@@ -1506,7 +1496,7 @@ def build_live_root_keyboard(user_data: Optional[dict] = None) -> InlineKeyboard
             text=f"🏙 Мой город: {get_country_city_label(user_data.get('country'), user_data['city'])}",
             callback_data="livemycity",
         ))
-    builder.row(InlineKeyboardButton(text="🔎 Найти город или группу", callback_data="searchgroup"))
+    builder.row(InlineKeyboardButton(text="🏙 Выбрать другой город", callback_data="searchgroup"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
@@ -1522,12 +1512,9 @@ def build_online_menu_keyboard() -> InlineKeyboardMarkup:
 
 def build_live_country_keyboard(prefix: str = "livecountry", back_callback: str = "modelive") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    for country in get_countries_with_live_groups():
-        builder.button(text=country, callback_data=f"{prefix}{COUNTRY_TO_ID[country]}")
-    builder.adjust(2)
-    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu" if back_callback == "modelive" else back_callback))
+    builder.row(InlineKeyboardButton(text="🏙 Выбрать другой город", callback_data="searchgroup"))
+    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
-
 
 def clamp_page(page: int, total_items: int, page_size: int = CITY_PAGE_SIZE) -> int:
     if total_items <= 0:
@@ -1549,9 +1536,9 @@ def parse_country_page(raw: str) -> Tuple[str, int]:
 
 def city_page_title(country: str, page: int, total_items: int) -> str:
     if total_items <= CITY_PAGE_SIZE:
-        return f"🏙 Выберите город: <b>{escape_html(country)}</b>"
+        return "🏙 Выберите город через поиск."
     max_page = (total_items - 1) // CITY_PAGE_SIZE
-    return f"🏙 Выберите город: <b>{escape_html(country)}</b> · стр. {page + 1}/{max_page + 1}"
+    return "🏙 Выберите город через поиск."
 
 
 def add_city_page_buttons(builder: InlineKeyboardBuilder, prefix: str, country: str, page: int) -> Tuple[int, int]:
@@ -1582,57 +1569,27 @@ def add_city_pagination_buttons(builder: InlineKeyboardBuilder, country: str, pa
 
 def build_live_city_keyboard(country: str, page: int = 0) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    page, _ = add_city_page_buttons(builder, "livecity", country, page)
-    add_city_pagination_buttons(builder, country, page, "livecountry")
-    builder.row(InlineKeyboardButton(text="← К странам", callback_data="livechoosecountry"))
+    builder.row(InlineKeyboardButton(text="🏙 Выбрать другой город", callback_data="searchgroup"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
-
 def all_live_locations_page_title(page: int, total_items: int) -> str:
     if total_items <= CITY_PAGE_SIZE:
-        return "🏙 <b>Все города</b>\n\nВыберите город:"
+        return "Список городов скрыт. Выберите город через поиск."
     max_page = (total_items - 1) // CITY_PAGE_SIZE
-    return f"🏙 <b>Все города</b> · стр. {page + 1}/{max_page + 1}\n\nВыберите город:"
+    return "Список городов скрыт. Выберите город через поиск."
 
 
 def build_all_live_locations_keyboard(page: int = 0) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    locations = get_all_live_locations()
-    page = clamp_page(page, len(locations), CITY_PAGE_SIZE)
-    start = page * CITY_PAGE_SIZE
-    end = start + CITY_PAGE_SIZE
-
-    for country, city in locations[start:end]:
-        builder.button(
-            text=get_country_city_label(country, city),
-            callback_data=f"livecity{get_location_id(city, country)}",
-        )
-    builder.adjust(2)
-
-    max_page = max(0, (len(locations) - 1) // CITY_PAGE_SIZE) if locations else 0
-    nav = []
-    if page > 0:
-        nav.append(InlineKeyboardButton(text="← Предыдущие", callback_data=f"liveallcities:{page - 1}"))
-    if page < max_page:
-        nav.append(InlineKeyboardButton(text="Следующие →", callback_data=f"liveallcities:{page + 1}"))
-    if nav:
-        builder.row(*nav)
-
-    builder.row(InlineKeyboardButton(text="← К живым встречам", callback_data="modelive"))
+    builder.row(InlineKeyboardButton(text="🏙 Выбрать другой город", callback_data="searchgroup"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
-
 
 def build_remaining_root_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="🌐 Онлайн", callback_data="remainingonline"),
-        InlineKeyboardButton(text="🏙 Живые", callback_data="remaininglive"),
-    )
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
-
 
 def get_all_live_locations() -> List[Tuple[str, str]]:
     locations = {(g["country"], g["city"]) for g in LIVE_GROUPS}
@@ -1644,9 +1601,9 @@ def get_all_live_locations() -> List[Tuple[str, str]]:
 
 def remaining_locations_page_title(page: int, total_items: int) -> str:
     if total_items <= CITY_PAGE_SIZE:
-        return "🏙 <b>Ближайшие живые встречи</b>\n\nВыберите город:"
+        return "Раздел «Ближайшие» убран."
     max_page = (total_items - 1) // CITY_PAGE_SIZE
-    return f"🏙 <b>Ближайшие живые встречи</b>\n\nВыберите город · стр. {page + 1}/{max_page + 1}"
+    return "Раздел «Ближайшие» убран."
 
 
 def add_remaining_location_page_buttons(builder: InlineKeyboardBuilder, page: int) -> Tuple[int, int]:
@@ -1674,29 +1631,14 @@ def add_remaining_location_pagination_buttons(builder: InlineKeyboardBuilder, pa
 
 
 def build_remaining_live_root_keyboard(user_data: Optional[dict] = None, page: int = 0) -> InlineKeyboardMarkup:
-    user_data = user_data or {}
     builder = InlineKeyboardBuilder()
-    if user_data.get("city"):
-        builder.row(InlineKeyboardButton(
-            text=f"🏙 Мой город: {get_country_city_label(user_data.get('country'), user_data['city'])}",
-            callback_data="remaininglivemycity",
-        ))
-    page, total = add_remaining_location_page_buttons(builder, page)
-    add_remaining_location_pagination_buttons(builder, page, total)
-    builder.row(InlineKeyboardButton(text="← К ближайшим", callback_data="remainingtoday"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
-
 
 def build_remaining_live_city_keyboard(country: str, page: int = 0) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    page, _ = add_city_page_buttons(builder, "remaininglivecity", country, page)
-    add_city_pagination_buttons(builder, country, page, "remaininglivecountry")
-    builder.row(InlineKeyboardButton(text="← К странам", callback_data="remaininglivechoosecountry"))
-    builder.row(InlineKeyboardButton(text="← К ближайшим", callback_data="remainingtoday"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
-
 
 def live_period_keyboard(city: str, country: Optional[str] = None) -> InlineKeyboardMarkup:
     cid = get_location_id(city, country)
@@ -1706,7 +1648,7 @@ def live_period_keyboard(city: str, country: Optional[str] = None) -> InlineKeyb
         InlineKeyboardButton(text="📋 Неделя", callback_data=f"liveweek{cid}"),
     )
     builder.row(InlineKeyboardButton(text="📆 Выбрать день", callback_data=f"livechooseday{cid}"))
-    builder.row(InlineKeyboardButton(text="← К городам", callback_data=f"livecountry{COUNTRY_TO_ID[country]}" if country in COUNTRY_TO_ID else "livechoosecountry"))
+    builder.row(InlineKeyboardButton(text="🏙 Выбрать другой город", callback_data="searchgroup"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
@@ -2524,24 +2466,14 @@ async def show_sub_online_info(target: CallbackQuery | Message, gid: str, page: 
 
 async def show_sub_live_country_selector(target: CallbackQuery | Message):
     builder = InlineKeyboardBuilder()
-    for country in get_countries_with_live_groups():
-        builder.button(text=country, callback_data=f"sublivecountry{COUNTRY_TO_ID[country]}")
-    builder.adjust(2)
-    builder.row(InlineKeyboardButton(text="📍 Найти город", callback_data="sublivecitysearch"))
+    builder.row(InlineKeyboardButton(text="🏙 Выбрать другой город", callback_data="sublivecitysearch"))
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
-    await send_or_edit(target, "🌍 Выберите страну для живых подписок:", reply_markup=builder.as_markup())
+    await send_or_edit(target, "🏙 Выберите город через поиск.", parse_mode=HTML_MODE, reply_markup=builder.as_markup())
 
 
 async def show_sub_live_city_selector(target: CallbackQuery | Message, country: str, page: int = 0):
-    builder = InlineKeyboardBuilder()
-    page, total = add_city_page_buttons(builder, "sublivecity", country, page)
-    add_city_pagination_buttons(builder, country, page, "sublivecountry")
-    builder.row(InlineKeyboardButton(text="← К странам", callback_data="sublivecitychange"))
-    builder.row(InlineKeyboardButton(text="📍 Найти город", callback_data="sublivecitysearch"))
-    builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
-    builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
-    await send_or_edit(target, city_page_title(country, page, total), parse_mode=HTML_MODE, reply_markup=builder.as_markup())
+    await show_sub_live_country_selector(target)
 
 
 async def show_sub_live_list(target: CallbackQuery | Message, city: str, country: Optional[str] = None, page: int = 0):
@@ -2553,7 +2485,7 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str, country
 
     city_groups = sorted(get_live_groups_for_city(city, country), key=lambda g: (g.get("name", "").lower(), compact_address_hint(g.get("address", "")).lower()))
     if not city_groups:
-        builder.row(InlineKeyboardButton(text="🏙 Сменить город", callback_data="sublivecitychange"))
+        builder.row(InlineKeyboardButton(text="🏙 Выбрать другой город", callback_data="sublivecitysearch"))
         builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
         builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
         await send_or_edit(target, f"🏙 <b>{escape_html(city)}</b>\n\nЖивые группы не найдены.", parse_mode=HTML_MODE, reply_markup=builder.as_markup())
@@ -2597,7 +2529,7 @@ async def show_sub_live_list(target: CallbackQuery | Message, city: str, country
         if nav:
             builder.row(*nav)
 
-    builder.row(InlineKeyboardButton(text="🏙 Сменить город", callback_data="sublivecitychange"))
+    builder.row(InlineKeyboardButton(text="🏙 Выбрать другой город", callback_data="sublivecitysearch"))
     builder.row(InlineKeyboardButton(text="← К подпискам", callback_data="submainback"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     await send_or_edit(
@@ -2851,44 +2783,23 @@ async def search_set_city_callback(callback: CallbackQuery):
 
 @DP.callback_query(F.data == "livechoosecountry")
 async def live_choose_country_callback(callback: CallbackQuery):
-    await send_or_edit(callback, "🌍 Выберите страну:", parse_mode=HTML_MODE, reply_markup=build_live_country_keyboard())
+    await send_or_edit(callback, "Список городов скрыт. Выберите город через поиск.", parse_mode=HTML_MODE, reply_markup=build_live_root_keyboard(get_user_sub(str(callback.from_user.id))))
 
 
 @DP.callback_query(F.data.startswith("liveallcities:"))
 async def live_all_cities_callback(callback: CallbackQuery):
-    raw = callback.data.split(":", 1)[1]
-    try:
-        page = int(raw)
-    except Exception:
-        page = 0
-    locations = get_all_live_locations()
-    page = clamp_page(page, len(locations), CITY_PAGE_SIZE)
-    await send_or_edit(
-        callback,
-        all_live_locations_page_title(page, len(locations)),
-        parse_mode=HTML_MODE,
-        reply_markup=build_all_live_locations_keyboard(page),
-    )
+    await send_or_edit(callback, "Список городов скрыт. Выберите город через поиск.", parse_mode=HTML_MODE, reply_markup=build_live_root_keyboard(get_user_sub(str(callback.from_user.id))))
+
 
 # Совместимость со старой кнопкой из предыдущей сборки.
 @DP.callback_query(F.data == "liveallcities")
 async def live_all_cities_legacy_callback(callback: CallbackQuery):
-    locations = get_all_live_locations()
-    await send_or_edit(
-        callback,
-        all_live_locations_page_title(0, len(locations)),
-        parse_mode=HTML_MODE,
-        reply_markup=build_all_live_locations_keyboard(0),
-    )
+    await send_or_edit(callback, "Список городов скрыт. Выберите город через поиск.", parse_mode=HTML_MODE, reply_markup=build_live_root_keyboard(get_user_sub(str(callback.from_user.id))))
 
 
 @DP.callback_query(F.data.startswith("livecountry"))
 async def live_choose_city_callback(callback: CallbackQuery):
-    country_id, page = parse_country_page(callback.data[len("livecountry"):])
-    country = ID_TO_COUNTRY.get(country_id, country_id)
-    total = len(get_cities_for_country(country))
-    page = clamp_page(page, total)
-    await send_or_edit(callback, city_page_title(country, page, total), parse_mode=HTML_MODE, reply_markup=build_live_city_keyboard(country, page))
+    await send_or_edit(callback, "Список городов скрыт. Выберите город через поиск.", parse_mode=HTML_MODE, reply_markup=build_live_root_keyboard(get_user_sub(str(callback.from_user.id))))
 
 
 @DP.callback_query(F.data == "livemycity")
@@ -2896,7 +2807,7 @@ async def live_my_city_callback(callback: CallbackQuery):
     user_data = get_user_sub(str(callback.from_user.id))
     city = user_data.get("city")
     if not city:
-        await send_or_edit(callback, "🏙 Город ещё не выбран.", parse_mode=HTML_MODE, reply_markup=build_live_country_keyboard())
+        await send_or_edit(callback, "🏙 Город ещё не выбран. Выберите город через поиск.", parse_mode=HTML_MODE, reply_markup=build_live_root_keyboard(user_data))
         return
     await send_or_edit(callback, f"🏙 <b>{escape_html(get_country_city_label(user_data.get('country'), city))}</b>", parse_mode=HTML_MODE, reply_markup=live_period_keyboard(city, user_data.get("country")))
 
@@ -3435,135 +3346,44 @@ async def btn_notification_settings(message: Message):
 
 @DP.callback_query(F.data == "remainingtoday")
 async def remaining_today_callback(callback: CallbackQuery):
-    await send_or_edit(
-        callback,
-        build_remaining_today_text(get_user_sub(str(callback.from_user.id))),
-        parse_mode=HTML_MODE,
-        disable_web_page_preview=True,
-        reply_markup=build_remaining_root_keyboard(),
-    )
+    await send_or_edit(callback, "Раздел «Ближайшие» убран. Используйте расписание на сегодня или неделю.", parse_mode=HTML_MODE, reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
 
 
 @DP.callback_query(F.data == "remainingonline")
-async def remaining_online_callback(callback: CallbackQuery):
-    await send_or_edit(
-        callback,
-        build_remaining_online_text(),
-        parse_mode=HTML_MODE,
-        disable_web_page_preview=True,
-        reply_markup=back_markup("← К ближайшим", "remainingtoday"),
-    )
-
+async def remainingonline_disabled_callback(callback: CallbackQuery):
+    await send_or_edit(callback, "Раздел «Ближайшие» убран. Используйте расписание на сегодня или неделю.", parse_mode=HTML_MODE, reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
 
 @DP.callback_query(F.data == "remaininglive")
-async def remaining_live_callback(callback: CallbackQuery):
-    page = 0
-    locations = get_all_live_locations()
-    await send_or_edit(
-        callback,
-        remaining_locations_page_title(page, len(locations)),
-        parse_mode=HTML_MODE,
-        reply_markup=build_remaining_live_root_keyboard(get_user_sub(str(callback.from_user.id)), page),
-    )
-
+async def remaininglive_disabled_callback(callback: CallbackQuery):
+    await send_or_edit(callback, "Раздел «Ближайшие» убран. Используйте расписание на сегодня или неделю.", parse_mode=HTML_MODE, reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
 
 @DP.callback_query(F.data.startswith("remaininglivecities"))
-async def remaining_live_cities_callback(callback: CallbackQuery):
-    raw = callback.data[len("remaininglivecities"):]
-    page = 0
-    match = re.search(r":p(\d+)$", raw)
-    if match:
-        page = int(match.group(1))
-    locations = get_all_live_locations()
-    page = clamp_page(page, len(locations))
-    await send_or_edit(
-        callback,
-        remaining_locations_page_title(page, len(locations)),
-        parse_mode=HTML_MODE,
-        reply_markup=build_remaining_live_root_keyboard(get_user_sub(str(callback.from_user.id)), page),
-    )
-
+async def remaininglivecities_disabled_callback(callback: CallbackQuery):
+    await send_or_edit(callback, "Раздел «Ближайшие» убран. Используйте расписание на сегодня или неделю.", parse_mode=HTML_MODE, reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
 
 @DP.callback_query(F.data == "remaininglivechoosecountry")
-async def remaining_live_choose_country_callback(callback: CallbackQuery):
-    await send_or_edit(
-        callback,
-        "🌍 Выберите страну:",
-        parse_mode=HTML_MODE,
-        reply_markup=build_live_country_keyboard(prefix="remaininglivecountry", back_callback="remaininglive"),
-    )
-
+async def remaininglivechoosecountry_disabled_callback(callback: CallbackQuery):
+    await send_or_edit(callback, "Раздел «Ближайшие» убран. Используйте расписание на сегодня или неделю.", parse_mode=HTML_MODE, reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
 
 @DP.callback_query(F.data.startswith("remaininglivecountry"))
-async def remaining_live_choose_city_callback(callback: CallbackQuery):
-    country_id, page = parse_country_page(callback.data[len("remaininglivecountry"):])
-    country = ID_TO_COUNTRY.get(country_id, country_id)
-    total = len(get_cities_for_country(country))
-    page = clamp_page(page, total)
-    await send_or_edit(
-        callback,
-        city_page_title(country, page, total),
-        parse_mode=HTML_MODE,
-        reply_markup=build_remaining_live_city_keyboard(country, page),
-    )
-
+async def remaininglivecountry_disabled_callback(callback: CallbackQuery):
+    await send_or_edit(callback, "Раздел «Ближайшие» убран. Используйте расписание на сегодня или неделю.", parse_mode=HTML_MODE, reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
 
 @DP.callback_query(F.data == "remaininglivemycity")
-async def remaining_live_my_city_callback(callback: CallbackQuery):
-    user_data = get_user_sub(str(callback.from_user.id))
-    city = user_data.get("city")
-    if not city:
-        locations = get_all_live_locations()
-        await send_or_edit(
-            callback,
-            "🏙 Город ещё не выбран. Выберите город из списка:",
-            parse_mode=HTML_MODE,
-            reply_markup=build_remaining_live_root_keyboard(user_data, 0),
-        )
-        return
-    country = user_data.get("country")
-    cid = get_location_id(city, country)
-    await send_or_edit(
-        callback,
-        build_remaining_live_text(city, country),
-        parse_mode=HTML_MODE,
-        reply_markup=back_markup("← К выбору города", f"remaininglivecityback{cid}"),
-    )
-
+async def remaininglivemycity_disabled_callback(callback: CallbackQuery):
+    await send_or_edit(callback, "Раздел «Ближайшие» убран. Используйте расписание на сегодня или неделю.", parse_mode=HTML_MODE, reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
 
 @DP.callback_query(F.data.startswith("remaininglivecityback"))
-async def remaining_live_city_back_callback(callback: CallbackQuery):
-    cid = callback.data[len("remaininglivecityback"):]
-    country, city = resolve_location_id(cid)
-    locations = get_all_live_locations()
-    await send_or_edit(
-        callback,
-        remaining_locations_page_title(0, len(locations)),
-        parse_mode=HTML_MODE,
-        reply_markup=build_remaining_live_root_keyboard({"country": country, "city": city}, 0),
-    )
-
+async def remaininglivecityback_disabled_callback(callback: CallbackQuery):
+    await send_or_edit(callback, "Раздел «Ближайшие» убран. Используйте расписание на сегодня или неделю.", parse_mode=HTML_MODE, reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
 
 @DP.callback_query(F.data.startswith("remaininglivecity"))
-async def remaining_live_city_callback(callback: CallbackQuery):
-    cid = callback.data[len("remaininglivecity"):]
-    country, city = resolve_location_id(cid)
-    await send_or_edit(
-        callback,
-        build_remaining_live_text(city, country),
-        parse_mode=HTML_MODE,
-        reply_markup=back_markup("← К городам", "remaininglivecities"),
-    )
-
+async def remaininglivecity_disabled_callback(callback: CallbackQuery):
+    await send_or_edit(callback, "Раздел «Ближайшие» убран. Используйте расписание на сегодня или неделю.", parse_mode=HTML_MODE, reply_markup=back_markup("⬅️ Главное меню", "mainmenu"))
 
 @DP.message(F.text == "🕒 Ближайшие")
 async def btn_remaining_today(message: Message):
-    await message.answer(
-        build_remaining_today_text(get_user_sub(str(message.from_user.id))),
-        parse_mode=HTML_MODE,
-        disable_web_page_preview=True,
-        reply_markup=build_remaining_root_keyboard(),
-    )
+    await message.answer("Раздел «Ближайшие» убран. Используйте расписание на сегодня или неделю.", reply_markup=REPLY_MAIN_MENU)
 
 
 @DP.message(F.text == "📩 Контакты")
