@@ -1353,7 +1353,7 @@ def build_search_results_keyboard(query: str) -> InlineKeyboardMarkup:
         for country, city in visible_cities:
             location_id = get_location_id(city, country)
             label = get_country_city_label(country, city)
-            builder.row(InlineKeyboardButton(text=f"Расписание: {label}", callback_data=f"searchshowcity{location_id}"))
+            builder.row(InlineKeyboardButton(text=f"Открыть город: {label}", callback_data=f"searchshowcity{location_id}"))
     if online_matches:
         builder.row(InlineKeyboardButton(text="Перейти к онлайн-подпискам", callback_data="subonline"))
 
@@ -1363,7 +1363,7 @@ def build_search_results_keyboard(query: str) -> InlineKeyboardMarkup:
         city = first.get("city", "")
         location_id = get_location_id(city, country)
         label = get_country_city_label(country, city)
-        builder.row(InlineKeyboardButton(text=f"Расписание: {label}", callback_data=f"searchshowcity{location_id}"))
+        builder.row(InlineKeyboardButton(text=f"Открыть город: {label}", callback_data=f"searchshowcity{location_id}"))
 
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
@@ -1499,7 +1499,10 @@ def build_live_root_keyboard(user_data: Optional[dict] = None) -> InlineKeyboard
             text=f"🏙 Мой город: {get_country_city_label(user_data.get('country'), user_data['city'])}",
             callback_data="livemycity",
         ))
-    builder.row(InlineKeyboardButton(text="🏙 Выбрать другой город", callback_data="searchgroup"))
+        choose_text = "🏙 Выбрать другой город"
+    else:
+        choose_text = "🏙 Выбрать город"
+    builder.row(InlineKeyboardButton(text=choose_text, callback_data="searchgroup"))
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
 
@@ -2729,6 +2732,17 @@ async def search_group_input(message: Message, state: FSMContext):
         )
         return
 
+    # Если пользователь ввёл город и он однозначно найден, сразу показываем стандартное меню периода.
+    # Списки городов не раскрываем: выбор города остаётся через поиск.
+    if city_matches:
+        sorted_cities = sorted(city_matches, key=lambda x: (x[0] != "Россия", x[0].lower(), city_sort_key(x[1])))
+        primary_cities, secondary_cities = split_primary_city_matches(query, sorted_cities)
+        visible_cities = primary_cities + secondary_cities
+        if len(visible_cities) == 1:
+            country, city = visible_cities[0]
+            await show_city_period_menu(message, get_location_id(city, country))
+            return
+
     await send_long_text(
         message,
         None,
@@ -2739,35 +2753,34 @@ async def search_group_input(message: Message, state: FSMContext):
     )
 
 
-async def show_city_week_from_search(callback: CallbackQuery, location_id: str):
+async def show_city_period_menu(target: CallbackQuery | Message, location_id: str):
     country, city = resolve_location_id(location_id)
-    await send_long_text(
-        callback,
-        f"📋 Живые группы на неделю: <b>{escape_html(get_country_city_label(country, city))}</b>",
-        get_live_week(city, country),
-        final_markup=city_schedule_back_keyboard(),
+    await send_or_edit(
+        target,
+        f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>",
         parse_mode=HTML_MODE,
+        reply_markup=live_period_keyboard(city, country),
     )
 
 
 @DP.callback_query(F.data.startswith("searchcityfull"))
 async def search_full_city_callback(callback: CallbackQuery):
-    # Совместимость со старыми кнопками: сразу показываем расписание города.
+    # Совместимость со старыми кнопками: показываем стандартное меню периода.
     location_id = callback.data[len("searchcityfull"):]
-    await show_city_week_from_search(callback, location_id)
+    await show_city_period_menu(callback, location_id)
 
 
 @DP.callback_query(F.data.startswith("searchshowcity"))
 async def search_show_city_callback(callback: CallbackQuery):
     location_id = callback.data[len("searchshowcity"):]
-    await show_city_week_from_search(callback, location_id)
+    await show_city_period_menu(callback, location_id)
 
 
 @DP.callback_query(F.data.startswith("searchsetcity"))
 async def search_set_city_callback(callback: CallbackQuery):
-    # Старые кнопки «Выбрать как мой город» больше не сохраняют город, а открывают расписание.
+    # Старые кнопки «Выбрать как мой город» больше не сохраняют город, а открывают стандартное меню периода.
     location_id = callback.data[len("searchsetcity"):]
-    await show_city_week_from_search(callback, location_id)
+    await show_city_period_menu(callback, location_id)
 
 
 @DP.callback_query(F.data == "livechoosecountry")
