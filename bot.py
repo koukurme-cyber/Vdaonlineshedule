@@ -1186,13 +1186,17 @@ def format_live_search_line(group: dict, include_city: bool = True, indent: bool
     return f"{prefix} <b>{escape_html(group['name'])}</b>{city_part}; {days_text}"
 
 
-def format_live_group_card_for_city_list(index: int, group: dict) -> str:
-    """Readable card for full city search results."""
+def format_live_group_card_for_city_list(index: int, group: dict, include_city: bool = True) -> str:
+    """Карточка живой группы для поиска: название, город, расписание, адрес."""
     name = escape_html(group.get("name", ""))
     schedule = escape_html(format_group_days_for_search(group, limit=30))
     address = escape_html(group.get("address", "") or "адрес не указан")
+    city_line = ""
+    if include_city:
+        city_label = get_country_city_label(group.get("country"), group.get("city", ""))
+        city_line = f"\n🏙 {escape_html(city_label)}" if city_label else ""
     return (
-        f"<b>{index}. {name}</b>\n"
+        f"<b>{index}. {name}</b>{city_line}\n"
         f"🕒 {schedule}\n"
         f"📍 {address}"
     )
@@ -1255,7 +1259,7 @@ def format_city_cards_for_search(country: Optional[str], city: str, start_index:
         return f"В городе «{escape_html(get_country_city_label(country, city))}» живых групп не найдено."
     lines = format_city_header_for_search(country, city, groups)
     lines.extend(
-        format_live_group_card_for_city_list(i, group)
+        format_live_group_card_for_city_list(i, group, include_city=False)
         for i, group in enumerate(groups, start=start_index)
     )
     return "\n\n".join(lines)
