@@ -1351,23 +1351,41 @@ def build_search_results_keyboard(query: str) -> InlineKeyboardMarkup:
     online_matches = collect_online_group_matches(query)
     live_matches = collect_live_group_matches(query)
 
+    shown_locations = set()
+
+    if online_matches:
+        builder.row(InlineKeyboardButton(text="🌐 Открыть онлайн-расписание", callback_data="mainonline"))
+
     if city_matches:
         primary_cities, secondary_cities = split_primary_city_matches(query, city_matches)
         visible_cities = primary_cities + secondary_cities
         for country, city in visible_cities:
             location_id = get_location_id(city, country)
             label = get_country_city_label(country, city)
-            builder.row(InlineKeyboardButton(text=f"Открыть город: {label}", callback_data=f"searchshowcity{location_id}"))
-    if online_matches:
-        builder.row(InlineKeyboardButton(text="Перейти к онлайн-подпискам", callback_data="subonline"))
+            shown_locations.add((country, city))
+            builder.row(InlineKeyboardButton(text=f"🏙 Открыть расписание: {label}", callback_data=f"searchshowcity{location_id}"))
 
-    if live_matches and not city_matches:
-        first = live_matches[0]
-        country = first.get("country")
-        city = first.get("city", "")
+    # Если поиск сработал по названию живой группы, показываем все найденные города,
+    # а не только первый. Так общий поиск остаётся навигацией по расписанию,
+    # а не уводит пользователя в раздел подписок.
+    live_locations = []
+    for group in live_matches:
+        country = group.get("country")
+        city = group.get("city", "")
+        key = (country, city)
+        if not city or key in shown_locations:
+            continue
+        shown_locations.add(key)
+        live_locations.append(key)
+
+    live_locations = sorted(
+        live_locations,
+        key=lambda x: (x[0] != "Россия", x[0].lower() if x[0] else "", city_sort_key(x[1])),
+    )[:12]
+    for country, city in live_locations:
         location_id = get_location_id(city, country)
         label = get_country_city_label(country, city)
-        builder.row(InlineKeyboardButton(text=f"Открыть город: {label}", callback_data=f"searchshowcity{location_id}"))
+        builder.row(InlineKeyboardButton(text=f"🏙 Открыть расписание: {label}", callback_data=f"searchshowcity{location_id}"))
 
     builder.row(InlineKeyboardButton(text="⬅️ Главное меню", callback_data="mainmenu"))
     return builder.as_markup()
@@ -3173,6 +3191,30 @@ async def set_daily_hour(callback: CallbackQuery):
     set_user_sub(uid, user_data)
     await settings_menu(callback, group_type)
 
+
+@DP.callback_query(F.data.startswith("toggledailyhour:"))
+async def toggle_daily_hour(callback: CallbackQuery):
+    _, group_type, hour_raw = callback.data.split(":")
+    try:
+        hour = int(hour_raw)
+    except Exception:
+        await safe_callback_answer(callback, "Ошибка")
+        return
+
+    uid = str(callback.from_user.id)
+    user_data = get_user_sub(uid)
+    settings = user_data[f"{group_type}_settings"]
+    current_hour = int(settings.get("daily_hour", DEFAULT_DAILY_HOUR))
+    current_enabled = bool(settings.get("daily_enabled", True))
+
+    if current_enabled and current_hour == hour:
+        settings["daily_enabled"] = False
+    else:
+        settings["daily_hour"] = hour
+        settings["daily_enabled"] = True
+
+    set_user_sub(uid, user_data)
+    await settings_menu(callback, group_type)
 
 
 @DP.callback_query(F.data.startswith("toggleremind:"))
