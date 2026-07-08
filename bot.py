@@ -1120,7 +1120,10 @@ def get_online_full() -> str:
 
 
 def normalize_search_query(text: str) -> str:
-    return re.sub(r"\s+", " ", (text or "").strip().lower())
+    # Для поиска не различаем «е» и «ё»:
+    # «Чёрная речка» должна находиться по запросу «черная речка».
+    normalized = (text or "").strip().lower().replace("ё", "е")
+    return re.sub(r"\s+", " ", normalized)
 
 
 def collect_online_group_matches(query: str) -> List[Tuple[str, List[Tuple[int, str, str]]]]:
