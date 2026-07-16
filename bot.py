@@ -130,7 +130,6 @@ ONLINE_SCHEDULE = {
         ("21:00", "ДЫШИ!", "https://t.me/breathelivebe"),
         ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
-        ("22:00", "Восст. Люб. Род. (Zoom)", "https://us02web.zoom.us/j/86893102645?pwd=d2N1UWFDY3Y5RXBpTUdQcWpDdEZVUT09UT09"),
     ],
     3: [
         ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
