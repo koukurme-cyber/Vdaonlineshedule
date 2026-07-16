@@ -178,7 +178,7 @@ ONLINE_SCHEDULE = {
         ("18:00", "Весна", "https://t.me/vdavesna_2021"),
         ("19:00", "Девчата", "https://t.me/+FKs5HqhF711iZTli"),
         ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
-        ("20:00", "Восст. Люб. Род. (Zoom)", "https://us02web.zoom.us/j/86893102645?pwd=d2N1UWFDY3Y5RXBpTUdQcWpDdEZVUT09UT09"),
+        ("20:00", "Восст. Люб. Род. (Zoom)", "https://t.me/reparenting_check_in"),
         ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
     ],
