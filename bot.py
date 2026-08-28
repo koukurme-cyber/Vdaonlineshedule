@@ -232,7 +232,7 @@ add_online_group([6], "21:30", "БШН", "https://t.me/bshnvda")
 # Свобода теперь проводится ежедневно в 09:00 и 21:00.
 add_online_group(range(7), "09:00", "Свобода", "https://t.me/vda_svoboda")
 
-add_online_group([2, 4, 5], "13:00", "Начало (MAX)", "https://max.ru/join/K1vR_TmHfgSBKnKR9DT04dX1vO81a3GuyBP3kc0fsio")
+add_online_group([2, 4, 5], "13:00", "Начало (MAX)", "https://max.ru/join/bwJu1lgYBCJJXU2eF6yEw9eYxKS89tVlEHKg5-Aq-8c")
 
 # «По шагам Тони А.» теперь также проводится по пятницам в 19:00.
 add_online_group([4], "19:00", "По шагам Тони А.", "https://t.me/+ajasg4oH0SU3MjFi")
