@@ -1,16 +1,23 @@
-name: Probe RKO group tables
+name: Monitor RKO group changes
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * *"
   push:
     branches:
       - main
     paths:
       - "tools/rko_probe.py"
+      - "tools/rko_diff.py"
       - ".github/workflows/rko-probe.yml"
 
+permissions:
+  contents: write
+  issues: write
+
 jobs:
-  probe:
+  monitor:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -27,12 +34,51 @@ jobs:
           pip install playwright beautifulsoup4 lxml
           playwright install --with-deps chromium
 
-      - name: Scrape RKO tables
+      - name: Collect current RKO groups
         run: python tools/rko_probe.py
 
-      - name: Upload probe result
+      - name: Compare with previous snapshot
+        id: diff
+        shell: bash
+        run: |
+          python tools/rko_diff.py
+          cat rko_diff_status.env
+          source rko_diff_status.env
+          echo "changes=$CHANGES_FOUND" >> "$GITHUB_OUTPUT"
+          echo "count=$CHANGE_COUNT" >> "$GITHUB_OUTPUT"
+          echo "initialized=$INITIALIZED" >> "$GITHUB_OUTPUT"
+
+      - name: Upload monitoring result
         uses: actions/upload-artifact@v4
         with:
-          name: rko-probe-output
-          path: rko_probe_output.json
+          name: rko-monitor-result
+          path: |
+            rko_probe_output.json
+            rko_changes.md
+            rko_diff_status.env
           if-no-files-found: error
+
+      - name: Create GitHub issue when groups changed
+        if: steps.diff.outputs.changes == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          DATE="$(date -u +%Y-%m-%d)"
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Изменения групп РКО — ${DATE}" \
+            --body-file rko_changes.md
+
+      - name: Save new snapshot
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/rko_snapshot.json
+          if git diff --cached --quiet; then
+            echo "Snapshot unchanged"
+          else
+            git commit -m "Update RKO group snapshot"
+            git push
+          fi
