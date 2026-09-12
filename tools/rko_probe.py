@@ -15,70 +15,83 @@ PAGES = {
 }
 OUT = Path("rko_probe_output.json")
 
+FIELD_MAP = {
+    "online": {
+        "название_группы": "name",
+        "дата_регистрации": "registration_date",
+        "расписание_группы": "schedule",
+        "как_попасть": "how_to_join",
+        "примечание": "note",
+        "публичный_e_mail": "public_email",
+        "дата_рождения_группы": "group_birthday",
+        "дата_обновления_группы": "updated_date",
+    },
+    "offline": {
+        "название_группы": "name",
+        "страна": "country",
+        "город": "city",
+        "дата_регистрации": "registration_date",
+        "адрес_проведения": "address",
+        "расписание": "schedule",
+        "пояснение": "note",
+        "способ_связи": "web",
+        "дата_рождения": "group_birthday",
+        "телефон_группы": "phone",
+        "дополнительный_e_mail": "public_email",
+        "координата_на_карте": "coordinates",
+    },
+}
 
-def html_cell(value, base_url):
+URL_RE = re.compile(r"https?://[^\s<>\"]+", re.I)
+
+
+def clean_text(value):
     if value is None:
-        value = ""
+        return ""
     if not isinstance(value, str):
-        value = json.dumps(value, ensure_ascii=False, sort_keys=True)
+        value = str(value)
     soup = BeautifulSoup(value, "lxml")
-    text = re.sub(r"\s+", " ", soup.get_text(" ", strip=True)).strip()
+    return re.sub(r"\s+", " ", soup.get_text(" ", strip=True)).strip()
+
+
+def extract_links(value, base_url):
+    if not isinstance(value, str):
+        return []
+    soup = BeautifulSoup(value, "lxml")
     links = []
     for a in soup.find_all("a", href=True):
         href = urljoin(base_url, a["href"].strip())
         if href not in links:
             links.append(href)
-    return {"text": text, "links": links}
+    for found in URL_RE.findall(clean_text(value)):
+        found = found.rstrip(".,);]")
+        if found not in links:
+            links.append(found)
+    return links
 
 
-def normalize_rows(raw_rows, headers, base_url):
-    result = []
-    for idx, row in enumerate(raw_rows, 1):
-        if isinstance(row, dict):
-            cells = {str(k): html_cell(v, base_url) for k, v in row.items()}
-        elif isinstance(row, list):
-            cells = {}
-            for i, value in enumerate(row):
-                key = headers[i] if i < len(headers) and headers[i] else f"col_{i+1}"
-                if key in cells:
-                    key = f"{key}_{i+1}"
-                cells[key] = html_cell(value, base_url)
-        else:
-            cells = {"value": html_cell(row, base_url)}
-        result.append({"row_number": idx, "cells": cells})
-    return result
-
-
-def shape(value, depth=0):
-    """Return structure only, never cell values."""
-    if depth > 4:
-        return type(value).__name__
-    if isinstance(value, dict):
-        return {str(k): shape(v, depth + 1) for k, v in list(value.items())[:30]}
-    if isinstance(value, list):
-        return {
-            "type": "list",
-            "length": len(value),
-            "first": shape(value[0], depth + 1) if value else None,
-        }
-    return type(value).__name__
-
-
-def largest_row_list(value):
-    best = None
-    if isinstance(value, list):
-        if value and all(isinstance(x, (dict, list)) for x in value[: min(10, len(value))]):
-            best = value
-        for item in value[:5]:
-            candidate = largest_row_list(item)
-            if candidate is not None and (best is None or len(candidate) > len(best)):
-                best = candidate
-    elif isinstance(value, dict):
-        for item in value.values():
-            candidate = largest_row_list(item)
-            if candidate is not None and (best is None or len(candidate) > len(best)):
-                best = candidate
-    return best
+def sanitize_record(kind, item, base_url):
+    values = item.get("value", {}) if isinstance(item, dict) else {}
+    if not isinstance(values, dict):
+        return None
+    record = {}
+    source_id = values.get("___id___")
+    if source_id not in (None, ""):
+        record["source_id"] = source_id
+    all_links = []
+    for source_key, target_key in FIELD_MAP[kind].items():
+        if source_key not in values:
+            continue
+        raw = values.get(source_key)
+        text = clean_text(raw)
+        if text:
+            record[target_key] = text
+        for link in extract_links(raw, base_url):
+            if link not in all_links:
+                all_links.append(link)
+    if all_links:
+        record["links"] = all_links
+    return record if len(record) > (1 if "source_id" in record else 0) else None
 
 
 async def scrape_page(page, kind, url):
@@ -97,70 +110,48 @@ async def scrape_page(page, kind, url):
         await page.wait_for_load_state("networkidle", timeout=15000)
     except Exception:
         pass
-    await page.wait_for_timeout(4000)
+    await page.wait_for_timeout(3000)
 
-    title = await page.title()
-    table_count = await page.locator("table").count()
+    ninja_url = next(
+        (u for u in xhr_urls if "ninja_tables_public_action" in u and "get-all-data" in u),
+        None,
+    )
+    if not ninja_url:
+        raise RuntimeError("Ninja Tables data request not found")
 
-    ninja_url = next((u for u in xhr_urls if "ninja_tables_public_action" in u and "get-all-data" in u), None)
-    ajax_info = None
-    ajax_row_count = None
-    if ninja_url:
-        resp = await page.request.get(ninja_url, timeout=60000)
-        payload = await resp.json()
-        rows_candidate = largest_row_list(payload)
-        ajax_row_count = len(rows_candidate) if rows_candidate is not None else None
-        ajax_info = {
-            "status": resp.status,
-            "payload_shape": shape(payload),
-            "largest_row_list_count": ajax_row_count,
-        }
+    response = await page.request.get(ninja_url, timeout=60000)
+    if not response.ok:
+        raise RuntimeError(f"Ninja Tables request failed: HTTP {response.status}")
+    payload = await response.json()
+    if not isinstance(payload, list):
+        raise RuntimeError(f"Unexpected Ninja Tables payload: {type(payload).__name__}")
 
-    # DOM extraction is deliberately limited to what the public page renders.
-    # We do not persist hidden raw AJAX values here because Ninja Tables may
-    # include administrative columns that are not intended for our bot.
-    dom = await page.evaluate("""
-    () => {
-      const tables = Array.from(document.querySelectorAll('table'));
-      let best = null;
-      for (const table of tables) {
-        const rows = Array.from(table.querySelectorAll('tbody tr'))
-          .filter(r => !r.classList.contains('child'));
-        if (!best || rows.length > best.count) {
-          best = {
-            count: rows.length,
-            id: table.id || null,
-            headers: Array.from(table.querySelectorAll('thead th')).map(x => (x.innerText || x.textContent || '').trim()),
-            data: rows.map(r => Array.from(r.querySelectorAll('td')).map(td => td.innerHTML))
-          };
-        }
-      }
-      return best;
-    }
-    """)
-    if not dom:
-        raise RuntimeError(f"No data table found on {url}")
+    records = []
+    for item in payload:
+        record = sanitize_record(kind, item, url)
+        if record:
+            records.append(record)
 
-    headers = dom.get("headers") or []
-    rows = normalize_rows(dom.get("data") or [], headers, url)
     return {
         "kind": kind,
-        "url": url,
-        "title": title,
-        "mode": "dom+ajax-probe",
-        "html_table_count": table_count,
-        "selected_table_id": dom.get("id"),
-        "headers": headers,
-        "rendered_row_count": len(rows),
-        "ajax_row_count": ajax_row_count,
-        "xhr_fetch_urls": xhr_urls,
-        "ajax_info": ajax_info,
-        "sample_rows": rows[:3],
+        "source_url": url,
+        "table_data_url": ninja_url,
+        "raw_row_count": len(payload),
+        "record_count": len(records),
+        "records": records,
     }
 
 
 async def main():
-    result = {"generated_at": datetime.now(timezone.utc).isoformat(), "pages": {}}
+    result = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "privacy_note": (
+            "Only explicitly public/useful fields are retained. Registration e-mails, "
+            "contact-person fields and internal display flags from the raw Ninja Tables payload are discarded."
+        ),
+        "pages": {},
+    }
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(locale="ru-RU")
@@ -169,18 +160,18 @@ async def main():
             try:
                 data = await scrape_page(page, kind, url)
                 result["pages"][kind] = data
-                print(f"{kind}: rendered={data['rendered_row_count']}; ajax={data['ajax_row_count']}; table={data['selected_table_id']}")
-                print("  headers:", data["headers"])
-                print("  ajax shape:", json.dumps(data["ajax_info"], ensure_ascii=False)[:4000])
+                print(f"{kind}: {data['record_count']} records from {data['raw_row_count']} raw rows")
+                for sample in data["records"][:2]:
+                    print("  sample:", json.dumps(sample, ensure_ascii=False))
             except Exception as exc:
-                result["pages"][kind] = {"kind": kind, "url": url, "error": repr(exc)}
+                result["pages"][kind] = {"kind": kind, "source_url": url, "error": repr(exc)}
                 print(f"{kind}: ERROR: {exc!r}")
             finally:
                 await page.close()
         await browser.close()
 
     OUT.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-    errors = [x for x in result["pages"].values() if "error" in x]
+    errors = [page for page in result["pages"].values() if "error" in page]
     if errors:
         raise SystemExit(2)
 
