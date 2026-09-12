@@ -1,0 +1,38 @@
+name: Probe RKO group tables
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "tools/rko_probe.py"
+      - ".github/workflows/rko-probe.yml"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright beautifulsoup4 lxml
+          playwright install --with-deps chromium
+
+      - name: Scrape RKO tables
+        run: python tools/rko_probe.py
+
+      - name: Upload probe result
+        uses: actions/upload-artifact@v4
+        with:
+          name: rko-probe-output
+          path: rko_probe_output.json
+          if-no-files-found: error
