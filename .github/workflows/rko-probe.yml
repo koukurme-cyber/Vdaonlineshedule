@@ -20,6 +20,7 @@ concurrency:
   group: rko-monitor
   cancel-in-progress: false
 
+# Manual verification trigger: 2026-09-12 punctuation test.
 jobs:
   monitor:
     runs-on: ubuntu-latest
