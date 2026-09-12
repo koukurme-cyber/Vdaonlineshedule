@@ -28,7 +28,7 @@ def html_cell(value, base_url):
         href = urljoin(base_url, a["href"].strip())
         if href not in links:
             links.append(href)
-    return {"text": text, "links": links, "html": value}
+    return {"text": text, "links": links}
 
 
 def normalize_rows(raw_rows, headers, base_url):
@@ -49,14 +49,45 @@ def normalize_rows(raw_rows, headers, base_url):
     return result
 
 
+def shape(value, depth=0):
+    """Return structure only, never cell values."""
+    if depth > 4:
+        return type(value).__name__
+    if isinstance(value, dict):
+        return {str(k): shape(v, depth + 1) for k, v in list(value.items())[:30]}
+    if isinstance(value, list):
+        return {
+            "type": "list",
+            "length": len(value),
+            "first": shape(value[0], depth + 1) if value else None,
+        }
+    return type(value).__name__
+
+
+def largest_row_list(value):
+    best = None
+    if isinstance(value, list):
+        if value and all(isinstance(x, (dict, list)) for x in value[: min(10, len(value))]):
+            best = value
+        for item in value[:5]:
+            candidate = largest_row_list(item)
+            if candidate is not None and (best is None or len(candidate) > len(best)):
+                best = candidate
+    elif isinstance(value, dict):
+        for item in value.values():
+            candidate = largest_row_list(item)
+            if candidate is not None and (best is None or len(candidate) > len(best)):
+                best = candidate
+    return best
+
+
 async def scrape_page(page, kind, url):
     xhr_urls = []
 
     def on_response(response):
         try:
-            if response.request.resource_type in {"xhr", "fetch"}:
-                if response.url not in xhr_urls:
-                    xhr_urls.append(response.url)
+            if response.request.resource_type in {"xhr", "fetch"} and response.url not in xhr_urls:
+                xhr_urls.append(response.url)
         except Exception:
             pass
 
@@ -71,108 +102,76 @@ async def scrape_page(page, kind, url):
     title = await page.title()
     table_count = await page.locator("table").count()
 
-    # Prefer DataTables' own API: it exposes all rows, including columns hidden
-    # behind the responsive '+' control, without clicking every record.
-    dt = await page.evaluate("""
+    ninja_url = next((u for u in xhr_urls if "ninja_tables_public_action" in u and "get-all-data" in u), None)
+    ajax_info = None
+    ajax_row_count = None
+    if ninja_url:
+        resp = await page.request.get(ninja_url, timeout=60000)
+        payload = await resp.json()
+        rows_candidate = largest_row_list(payload)
+        ajax_row_count = len(rows_candidate) if rows_candidate is not None else None
+        ajax_info = {
+            "status": resp.status,
+            "payload_shape": shape(payload),
+            "largest_row_list_count": ajax_row_count,
+        }
+
+    # DOM extraction is deliberately limited to what the public page renders.
+    # We do not persist hidden raw AJAX values here because Ninja Tables may
+    # include administrative columns that are not intended for our bot.
+    dom = await page.evaluate("""
     () => {
-      const jq = window.jQuery;
-      if (!jq || !jq.fn || !jq.fn.dataTable) return null;
-      const tables = Array.from(jq.fn.dataTable.tables());
+      const tables = Array.from(document.querySelectorAll('table'));
       let best = null;
       for (const table of tables) {
-        try {
-          const api = jq(table).DataTable();
-          const count = api.rows().count();
-          const headers = api.columns().header().toArray().map(h => (h.innerText || h.textContent || '').trim());
-          const data = api.rows().data().toArray().map(row => {
-            if (Array.isArray(row)) return row.map(v => v == null ? '' : String(v));
-            if (row && typeof row === 'object') {
-              const out = {};
-              for (const [k,v] of Object.entries(row)) out[k] = v == null ? '' : String(v);
-              return out;
-            }
-            return String(row ?? '');
-          });
-          if (!best || count > best.count) best = {count, headers, data, id: table.id || null};
-        } catch (e) {}
+        const rows = Array.from(table.querySelectorAll('tbody tr'))
+          .filter(r => !r.classList.contains('child'));
+        if (!best || rows.length > best.count) {
+          best = {
+            count: rows.length,
+            id: table.id || null,
+            headers: Array.from(table.querySelectorAll('thead th')).map(x => (x.innerText || x.textContent || '').trim()),
+            data: rows.map(r => Array.from(r.querySelectorAll('td')).map(td => td.innerHTML))
+          };
+        }
       }
       return best;
     }
     """)
+    if not dom:
+        raise RuntimeError(f"No data table found on {url}")
 
-    mode = "datatables"
-    if dt and dt.get("data"):
-        headers = dt.get("headers") or []
-        raw_rows = dt["data"]
-        table_id = dt.get("id")
-    else:
-        mode = "dom"
-        # Generic fallback: choose the table with the most body rows.
-        dom = await page.evaluate("""
-        () => {
-          const tables = Array.from(document.querySelectorAll('table'));
-          let best = null;
-          for (const table of tables) {
-            const rows = Array.from(table.querySelectorAll('tbody tr'))
-              .filter(r => !r.classList.contains('child'));
-            if (!best || rows.length > best.count) {
-              best = {
-                count: rows.length,
-                id: table.id || null,
-                headers: Array.from(table.querySelectorAll('thead th')).map(x => (x.innerText || x.textContent || '').trim()),
-                data: rows.map(r => Array.from(r.querySelectorAll('td')).map(td => td.innerHTML))
-              };
-            }
-          }
-          return best;
-        }
-        """)
-        if not dom:
-            raise RuntimeError(f"No data table found on {url}")
-        headers = dom.get("headers") or []
-        raw_rows = dom.get("data") or []
-        table_id = dom.get("id")
-
-    rows = normalize_rows(raw_rows, headers, url)
+    headers = dom.get("headers") or []
+    rows = normalize_rows(dom.get("data") or [], headers, url)
     return {
         "kind": kind,
         "url": url,
         "title": title,
-        "mode": mode,
+        "mode": "dom+ajax-probe",
         "html_table_count": table_count,
-        "selected_table_id": table_id,
+        "selected_table_id": dom.get("id"),
         "headers": headers,
-        "row_count": len(rows),
+        "rendered_row_count": len(rows),
+        "ajax_row_count": ajax_row_count,
         "xhr_fetch_urls": xhr_urls,
-        "rows": rows,
+        "ajax_info": ajax_info,
+        "sample_rows": rows[:3],
     }
 
 
 async def main():
-    result = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "pages": {},
-    }
+    result = {"generated_at": datetime.now(timezone.utc).isoformat(), "pages": {}}
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            locale="ru-RU",
-            user_agent=(
-                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                "Chrome/140.0 Safari/537.36"
-            ),
-        )
+        context = await browser.new_context(locale="ru-RU")
         for kind, url in PAGES.items():
             page = await context.new_page()
             try:
                 data = await scrape_page(page, kind, url)
                 result["pages"][kind] = data
-                print(f"{kind}: {data['row_count']} rows; mode={data['mode']}; table={data['selected_table_id']}")
+                print(f"{kind}: rendered={data['rendered_row_count']}; ajax={data['ajax_row_count']}; table={data['selected_table_id']}")
                 print("  headers:", data["headers"])
-                print("  xhr/fetch:", data["xhr_fetch_urls"][:10])
-                for sample in data["rows"][:2]:
-                    preview = {k: v["text"] for k, v in sample["cells"].items()}
-                    print("  sample:", json.dumps(preview, ensure_ascii=False))
+                print("  ajax shape:", json.dumps(data["ajax_info"], ensure_ascii=False)[:4000])
             except Exception as exc:
                 result["pages"][kind] = {"kind": kind, "url": url, "error": repr(exc)}
                 print(f"{kind}: ERROR: {exc!r}")
@@ -181,11 +180,8 @@ async def main():
         await browser.close()
 
     OUT.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Saved: {OUT}")
-
     errors = [x for x in result["pages"].values() if "error" in x]
-    empty = [x for x in result["pages"].values() if x.get("row_count", 0) == 0 and "error" not in x]
-    if errors or empty:
+    if errors:
         raise SystemExit(2)
 
 
