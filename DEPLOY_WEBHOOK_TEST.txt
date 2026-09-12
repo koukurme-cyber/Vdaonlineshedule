@@ -1,0 +1,1 @@
+Bothost webhook connectivity test. Safe to delete after verification.
