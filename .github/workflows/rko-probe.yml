@@ -16,12 +16,18 @@ permissions:
   contents: write
   issues: write
 
+concurrency:
+  group: rko-monitor
+  cancel-in-progress: false
+
 jobs:
   monitor:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -80,5 +86,6 @@ jobs:
             echo "Snapshot unchanged"
           else
             git commit -m "Update RKO group snapshot"
-            git push
+            git pull --rebase origin main
+            git push origin main
           fi
