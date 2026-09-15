@@ -1,0 +1,119 @@
+name: One-off live RKO Astana check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/oneoff_rko_astana.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    if: github.event.head_commit.message == 'Check live RKO Astana'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install scraper dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright beautifulsoup4 lxml
+          python -m playwright install --with-deps chromium
+
+      - name: Read Astana directly from live RKO table
+        run: |
+          python - <<'PY'
+          import asyncio, json, re
+          from bs4 import BeautifulSoup
+          from playwright.async_api import async_playwright
+
+          URL = 'https://adultchildren.ru/groups/offline_list/'
+
+          def clean(value):
+              if value is None:
+                  return ''
+              soup = BeautifulSoup(str(value), 'lxml')
+              return re.sub(r'\s+', ' ', soup.get_text(' ', strip=True)).strip()
+
+          FIELD_MAP = {
+              'название_группы': 'name',
+              'страна': 'country',
+              'город': 'city',
+              'дата_регистрации': 'registration_date',
+              'адрес_проведения': 'address',
+              'расписание': 'schedule',
+              'пояснение': 'note',
+              'способ_связи': 'web',
+              'дата_рождения': 'group_birthday',
+              'телефон_группы': 'phone',
+              'дополнительный_e_mail': 'public_email',
+              'координата_на_карте': 'coordinates',
+          }
+
+          async def main():
+              async with async_playwright() as p:
+                  browser = await p.chromium.launch(headless=True)
+                  context = await browser.new_context(locale='ru-RU')
+                  page = await context.new_page()
+                  xhr_urls = []
+                  def on_response(response):
+                      try:
+                          if response.request.resource_type in {'xhr','fetch'} and response.url not in xhr_urls:
+                              xhr_urls.append(response.url)
+                      except Exception:
+                          pass
+                  page.on('response', on_response)
+                  await page.goto(URL, wait_until='domcontentloaded', timeout=60000)
+                  try:
+                      await page.wait_for_load_state('networkidle', timeout=15000)
+                  except Exception:
+                      pass
+                  await page.wait_for_timeout(3000)
+                  ninja_url = next((u for u in xhr_urls if 'ninja_tables_public_action' in u and 'get-all-data' in u), None)
+                  if not ninja_url:
+                      raise RuntimeError('Ninja Tables data request not found')
+                  response = await page.request.get(ninja_url, timeout=60000)
+                  if not response.ok:
+                      raise RuntimeError(f'RKO table request failed: HTTP {response.status}')
+                  payload = await response.json()
+                  found = []
+                  for item in payload:
+                      values = item.get('value', {}) if isinstance(item, dict) else {}
+                      if not isinstance(values, dict):
+                          continue
+                      city = clean(values.get('город', ''))
+                      c = city.casefold().replace('ё','е')
+                      if 'астан' not in c and 'нур-султан' not in c and 'нур султан' not in c:
+                          continue
+                      rec = {'source_id': values.get('___id___')}
+                      for src, dst in FIELD_MAP.items():
+                          val = clean(values.get(src, ''))
+                          if val:
+                              rec[dst] = val
+                      found.append(rec)
+                  await browser.close()
+              out = {
+                  'source_url': URL,
+                  'matched_count': len(found),
+                  'records': found,
+              }
+              with open('astana_live_rko.json','w',encoding='utf-8') as f:
+                  json.dump(out,f,ensure_ascii=False,indent=2)
+              print(json.dumps(out,ensure_ascii=False,indent=2))
+
+          asyncio.run(main())
+          PY
+
+      - name: Commit live result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add astana_live_rko.json
+          git commit -m "Capture live RKO Astana data"
+          git push
