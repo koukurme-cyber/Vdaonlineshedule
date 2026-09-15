@@ -1,0 +1,59 @@
+name: One-off Astana schedule update
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/oneoff_astana_update.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    if: github.event.head_commit.message == 'Run Astana schedule update'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update Astana rows in live_groups.tsv
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('live_groups.tsv')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  'Казахстан\tАстана\tГруппа ВДА в г. Астана\tКерей Жанибек Хандар 12/1. Контакты: +77057022087 (Вотсап), Вероника\tВоскресенье 13:00–14:30',
+                  'Казахстан\tАстана\tГруппа ВДА в г. Астана\tКерей Жанибек Хандар 12/1. Контакты: +77057022087 (Вотсап), Вероника. Время встреч может измениться. Уточняйте, пожалуйста, по номеру в Вотсапе: +77057022087. Email: natfed2@yandex.ru\tВоскресенье 13:00–14:30 (местное время Астаны, GMT+5)',
+                  'основная группа Астаны',
+              ),
+              (
+                  'Казахстан\tНур-султан\tВинни пух\tПетрова 14/3\tВоскресенье 14:00',
+                  'Казахстан\tАстана\tВинни пух\tПетрова 14/3. Email: vdaastana@gmail.com\tВоскресенье 14:00',
+                  'группа «Винни пух»',
+              ),
+          ]
+
+          for old, new, label in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected exactly one match for {label}, found {count}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit update
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add live_groups.tsv
+          git diff --cached --check
+          git commit -m "Update Astana schedule data"
+          git push
