@@ -1,0 +1,50 @@
+name: Cleanup old Actions artifacts once
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/cleanup-actions-artifacts-once.yml"
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Keep newest artifact and delete older ones
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          DATA="$(gh api "/repos/${GH_REPO}/actions/artifacts?per_page=100")"
+          TOTAL="$(jq -r '.total_count' <<<"$DATA")"
+          KEEP_ID="$(jq -r '.artifacts | sort_by(.created_at) | reverse | .[0].id // empty' <<<"$DATA")"
+          KEEP_NAME="$(jq -r '.artifacts | sort_by(.created_at) | reverse | .[0].name // empty' <<<"$DATA")"
+          KEEP_BYTES="$(jq -r '.artifacts | sort_by(.created_at) | reverse | .[0].size_in_bytes // 0' <<<"$DATA")"
+          echo "total_before=$TOTAL"
+          echo "keep_id=$KEEP_ID"
+          echo "keep_name=$KEEP_NAME"
+          echo "keep_bytes=$KEEP_BYTES"
+
+          DELETED=0
+          FREED=0
+          while IFS=$'\t' read -r ID SIZE NAME; do
+            [ -z "$ID" ] && continue
+            echo "Deleting artifact $ID: $NAME ($SIZE bytes)"
+            gh api --method DELETE "/repos/${GH_REPO}/actions/artifacts/$ID"
+            DELETED=$((DELETED + 1))
+            FREED=$((FREED + SIZE))
+          done < <(jq -r --arg keep "$KEEP_ID" '.artifacts[] | select((.id|tostring) != $keep) | [.id,.size_in_bytes,.name] | @tsv' <<<"$DATA")
+
+          AFTER="$(gh api "/repos/${GH_REPO}/actions/artifacts?per_page=100")"
+          REMAINING="$(jq -r '.total_count' <<<"$AFTER")"
+          echo "deleted=$DELETED"
+          echo "freed_bytes=$FREED"
+          echo "remaining=$REMAINING"
+          jq -r '.artifacts[] | "remaining_artifact=" + .name + " size=" + (.size_in_bytes|tostring)' <<<"$AFTER"
