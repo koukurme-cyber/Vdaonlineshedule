@@ -125,7 +125,6 @@ ONLINE_SCHEDULE = {
         ("19:00", "ВДА-ВЕРА", "https://t.me/+J2m1MAbQ818zNTFi"),
         ("19:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("19:30", "Эффект бабочки", "https://t.me/+FcaUkHDOuMpkMTI8"),
-        ("20:00", "Мужская ВДА", "https://t.me/+ewtjezZaCtM5YTdi"),
         ("20:00", "Доверие (вопросы)", "https://t.me/VDADoverie"),
         ("21:00", "ДЫШИ!", "https://t.me/breathelivebe"),
         ("21:00", "ВДА ВЕЧЕР", "https://t.me/vda_vecher"),
