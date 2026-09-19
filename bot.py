@@ -2766,8 +2766,35 @@ async def search_group_callback(callback: CallbackQuery, state: FSMContext):
     )
 
 
+async def route_main_reply_button_from_input_state(message: Message, state: FSMContext) -> bool:
+    text = (message.text or "").strip()
+    if text in {"🌐 Онлайн", "🌐 Онлайн-встречи"}:
+        await state.clear()
+        await btn_online(message)
+        return True
+    if text in {"🏙 Живые", "🏙 Живые встречи"}:
+        await state.clear()
+        await btn_live(message)
+        return True
+    if text == "🔔 Подписки":
+        await state.clear()
+        await btn_subscriptions(message)
+        return True
+    if text in {"🔎 Найти группу или город", "🔍 Найти группу"}:
+        await state.clear()
+        await btn_search_group(message, state)
+        return True
+    if text in {"📩 Контакты", "Контакты"}:
+        await state.clear()
+        await btn_contacts(message)
+        return True
+    return False
+
+
 @DP.message(StateFilter(GroupNameSearch.waiting_for_name))
 async def search_group_input(message: Message, state: FSMContext):
+    if await route_main_reply_button_from_input_state(message, state):
+        return
     await state.clear()
     query = (message.text or "").strip()
     if len(query) < 2:
@@ -2959,6 +2986,8 @@ async def sub_live_city_search(callback: CallbackQuery, state: FSMContext):
 
 @DP.message(StateFilter(SubCitySearch.waiting_for_city))
 async def sub_live_city_input(message: Message, state: FSMContext):
+    if await route_main_reply_button_from_input_state(message, state):
+        return
     await state.clear()
     matched = get_searchable_cities((message.text or "").strip())
     if not matched:
