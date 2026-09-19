@@ -2712,8 +2712,11 @@ async def noop_callback(callback: CallbackQuery):
 
 @DP.message(Command("start"))
 async def cmd_start(message: Message):
-    await message.answer("Выберите раздел ниже.", reply_markup=REPLY_MAIN_MENU)
-    await message.answer("🏠 <b>Главное меню</b>\n\nИспользуйте кнопки нижнего меню.", parse_mode=HTML_MODE)
+    await message.answer(
+        "🏠 <b>Главное меню</b>\n\nИспользуйте кнопки нижнего меню.",
+        parse_mode=HTML_MODE,
+        reply_markup=REPLY_MAIN_MENU,
+    )
 
 
 @DP.message(Command("help"))
@@ -2727,7 +2730,17 @@ async def cmd_help(message: Message):
 
 @DP.callback_query(F.data == "mainmenu")
 async def main_menu_callback(callback: CallbackQuery):
-    await send_or_edit(callback, "🏠 <b>Главное меню</b>\n\nИспользуйте кнопки нижнего меню.", parse_mode=HTML_MODE, reply_markup=None)
+    await safe_edit_text(
+        callback.message,
+        "🏠 <b>Главное меню</b>",
+        parse_mode=HTML_MODE,
+        reply_markup=None,
+    )
+    await callback.message.answer(
+        "Используйте кнопки нижнего меню.",
+        reply_markup=REPLY_MAIN_MENU,
+    )
+    await safe_callback_answer(callback)
 
 
 @DP.callback_query(F.data == "mainonline")
