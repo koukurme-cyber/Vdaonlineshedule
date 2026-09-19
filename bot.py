@@ -1871,7 +1871,7 @@ async def send_long_text(target: CallbackQuery | Message, header_text: Optional[
     parts = split_long_message(full_text)
     if isinstance(target, CallbackQuery):
         if header_text:
-            await safe_edit_text(target.message, header_text, **kwargs)
+            await safe_edit_text(target.message, header_text, reply_markup=None, **kwargs)
         else:
             await safe_edit_text(target.message, parts[0], reply_markup=final_markup if len(parts) == 1 else None, **kwargs)
             parts = parts[1:]
@@ -2711,7 +2711,8 @@ async def noop_callback(callback: CallbackQuery):
 
 
 @DP.message(Command("start"))
-async def cmd_start(message: Message):
+async def cmd_start(message: Message, state: FSMContext):
+    await state.clear()
     await message.answer(
         "🏠 <b>Главное меню</b>\n\nИспользуйте кнопки нижнего меню.",
         parse_mode=HTML_MODE,
@@ -2720,7 +2721,8 @@ async def cmd_start(message: Message):
 
 
 @DP.message(Command("help"))
-async def cmd_help(message: Message):
+async def cmd_help(message: Message, state: FSMContext):
+    await state.clear()
     await message.answer(
         HELP_TEXT,
         parse_mode=HTML_MODE,
@@ -2729,7 +2731,8 @@ async def cmd_help(message: Message):
 
 
 @DP.callback_query(F.data == "mainmenu")
-async def main_menu_callback(callback: CallbackQuery):
+async def main_menu_callback(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
     await safe_edit_text(
         callback.message,
         "🏠 <b>Главное меню</b>",
@@ -2756,7 +2759,11 @@ async def main_live_callback(callback: CallbackQuery):
 @DP.callback_query(F.data == "searchgroup")
 async def search_group_callback(callback: CallbackQuery, state: FSMContext):
     await state.set_state(GroupNameSearch.waiting_for_name)
-    await send_or_edit(callback, "Введите название группы или город:")
+    await send_or_edit(
+        callback,
+        "Введите название группы или город:",
+        reply_markup=back_markup("⬅️ Главное меню", "mainmenu"),
+    )
 
 
 @DP.message(StateFilter(GroupNameSearch.waiting_for_name))
@@ -2894,11 +2901,16 @@ async def main_my_groups_callback(callback: CallbackQuery):
 @DP.callback_query(F.data == "mainunsubscribe")
 async def main_unsubscribe_callback(callback: CallbackQuery):
     remove_subscriber(str(callback.from_user.id))
-    await send_or_edit(callback, "🔕 Вы отписались от всех уведомлений.")
+    await send_or_edit(
+        callback,
+        "🔕 Вы отписались от всех уведомлений.",
+        reply_markup=build_subscriptions_menu(),
+    )
 
 
 @DP.callback_query(F.data == "submainback")
-async def sub_main_back(callback: CallbackQuery):
+async def sub_main_back(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
     await show_sub_main(callback)
 
 
@@ -3491,7 +3503,10 @@ async def btn_unsubscribe_all(message: Message):
 @DP.message(F.text == "🔍 Найти группу")
 async def btn_search_group(message: Message, state: FSMContext):
     await state.set_state(GroupNameSearch.waiting_for_name)
-    await message.answer("Введите название группы или город:")
+    await message.answer(
+        "Введите название группы или город:",
+        reply_markup=back_markup("⬅️ Главное меню", "mainmenu"),
+    )
 
 
 @DP.message()
