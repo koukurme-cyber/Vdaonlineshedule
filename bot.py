@@ -78,7 +78,7 @@ POPULAR_CITIES = [
 
 ONLINE_SCHEDULE = {
     0: [
-        ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
+        ("05:00", "Восход", "https://t.me/c/1589541764/97810"),
         ("07:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
         ("07:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("08:00", "Единство утро", "https://t.me/ACAgroupUnityMoscow"),
@@ -94,7 +94,7 @@ ONLINE_SCHEDULE = {
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
     ],
     1: [
-        ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
+        ("05:00", "Восход", "https://t.me/c/1589541764/97810"),
         ("07:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
         ("07:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("09:00", "Доверие", "https://t.me/VDADoverie"),
@@ -110,7 +110,7 @@ ONLINE_SCHEDULE = {
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
     ],
     2: [
-        ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
+        ("05:00", "Восход", "https://t.me/c/1589541764/97810"),
         ("07:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
         ("07:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("08:00", "Единство утро", "https://t.me/ACAgroupUnityMoscow"),
@@ -131,7 +131,7 @@ ONLINE_SCHEDULE = {
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
     ],
     3: [
-        ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
+        ("05:00", "Восход", "https://t.me/c/1589541764/97810"),
         ("07:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("07:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
         ("09:00", "Доверие", "https://t.me/VDADoverie"),
@@ -149,7 +149,7 @@ ONLINE_SCHEDULE = {
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
     ],
     4: [
-        ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
+        ("05:00", "Восход", "https://t.me/c/1589541764/97810"),
         ("07:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
         ("07:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("08:00", "Говори Доверяй Чувствуй", "https://t.me/govori_vda"),
@@ -169,7 +169,7 @@ ONLINE_SCHEDULE = {
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
     ],
     5: [
-        ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
+        ("05:00", "Восход", "https://t.me/c/1589541764/97810"),
         ("08:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
         ("09:00", "Доверие", "https://t.me/VDADoverie"),
         ("12:00", "День за днём", "https://t.me/+BwAsiX1KsGljZjQy"),
@@ -183,7 +183,7 @@ ONLINE_SCHEDULE = {
         ("21:00", "Свобода", "https://t.me/vda_svoboda"),
     ],
     6: [
-        ("05:00", "Восход", "https://t.me/+gdi_B_ctmVJkMTAy"),
+        ("05:00", "Восход", "https://t.me/c/1589541764/97810"),
         ("07:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("08:00", "ВДА Утро", "https://t.me/+KBt9VaElvMA4NTcy"),
         ("10:00", "ВДА НСК онлайн", "https://t.me/VDANsk"),
@@ -235,6 +235,9 @@ add_online_group([2, 4, 5], "13:00", "Начало (MAX)", "https://max.ru/join/
 
 # «По шагам Тони А.» теперь также проводится по пятницам в 19:00.
 add_online_group([4], "19:00", "По шагам Тони А.", "https://t.me/+ajasg4oH0SU3MjFi")
+
+# ВДА Артплей: четверг проходит онлайн в Gem Space; актуальная ссылка публикуется в Telegram группы.
+add_online_group([3], "19:00", "ВДА Артплей", "https://t.me/VDAartPlay")
 
 
 class SubCitySearch(StatesGroup):
