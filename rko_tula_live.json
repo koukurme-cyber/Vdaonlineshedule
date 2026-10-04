@@ -1,0 +1,19 @@
+{
+  "source_url": "https://adultchildren.ru/groups/offline_list/",
+  "table_data_url": "https://adultchildren.ru/wp-admin/admin-ajax.php?action=wp_ajax_ninja_tables_public_action&table_id=71&target_action=get-all-data&default_sorting=new_first&skip_rows=0&limit_rows=0&ninja_table_public_nonce=d2f42f5198",
+  "hits": [
+    {
+      "source_id": 1072,
+      "name": "Новый путь",
+      "country": "Россия",
+      "city": "Тула",
+      "registration_date": "02-Oct-26",
+      "address": "проспект Ленина 22",
+      "schedule": "Среда 19.00-20.00 Воскресенье 16.30-17.30",
+      "group_birthday": "16.04.2025",
+      "phone": "+79534227518",
+      "public_email": "vda_tula@mail.ru",
+      "coordinates": "54.190536, 37.614195"
+    }
+  ]
+}
