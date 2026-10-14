@@ -1702,10 +1702,7 @@ START_TEXT = (
     "Справка — /help"
 )
 
-MAIN_MENU_TEXT = (
-    "🏠 <b>Главное меню</b>\n\n"
-    "Выберите раздел кнопками внизу или просто напишите город или название группы."
-)
+MAIN_MENU_TEXT = "Выберите раздел кнопками внизу 👇 или просто напишите город или название группы."
 
 
 HELP_TEXT = (
@@ -2984,13 +2981,17 @@ async def cmd_help(message: Message, state: FSMContext):
 @DP.callback_query(F.data == "mainmenu")
 async def main_menu_callback(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    # Нижнее меню постоянное, поэтому просто превращаем текущее сообщение
-    # в «Главное меню», не присылая новых сообщений.
     await safe_edit_text(
         callback.message,
-        MAIN_MENU_TEXT,
+        "🏠 <b>Главное меню</b>",
         parse_mode=HTML_MODE,
         reply_markup=None,
+    )
+    # Новое сообщение нужно: только так Telegram заново показывает нижнее меню.
+    await callback.message.answer(
+        MAIN_MENU_TEXT,
+        parse_mode=HTML_MODE,
+        reply_markup=REPLY_MAIN_MENU,
     )
     await safe_callback_answer(callback)
 
