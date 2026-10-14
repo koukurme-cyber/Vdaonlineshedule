@@ -5,8 +5,9 @@ import io
 import json
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import quote_plus
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from aiogram import Bot, Dispatcher, F
@@ -270,21 +271,127 @@ def moscow_now() -> datetime:
     return datetime.utcnow() + timedelta(hours=3)
 
 
+# Часовые пояса для живых групп: время в таблице местное, поэтому
+# «сегодня», утренняя сводка и напоминания считаются по времени города.
+COUNTRY_TIMEZONES = {
+    "азербайджан": "Asia/Baku",
+    "армения": "Asia/Yerevan",
+    "беларусь": "Europe/Minsk",
+    "вьетнам": "Asia/Ho_Chi_Minh",
+    "грузия": "Asia/Tbilisi",
+    "израиль": "Asia/Jerusalem",
+    "испания": "Europe/Madrid",
+    "казахстан": "+5",  # с 2024 года весь Казахстан живёт по UTC+5
+    "кыргызстан": "Asia/Bishkek",
+    "латвия": "Europe/Riga",
+    "литва": "Europe/Vilnius",
+    "польша": "Europe/Warsaw",
+    "сербия": "Europe/Belgrade",
+    "узбекистан": "Asia/Tashkent",
+    "украина": "Europe/Kyiv",
+    "черногория": "Europe/Podgorica",
+    "эстония": "Europe/Tallinn",
+}
+
+# Города не по московскому времени. Проверяются по порядку, по началу слова.
+CITY_TIMEZONES = [
+    ("калининград", "+2"),
+    ("самар", "+4"), ("тольятти", "+4"), ("ижевск", "+4"), ("ульяновск", "+4"),
+    ("астрахан", "+4"), ("саратов", "+4"), ("энгельс", "+4"),
+    ("екатеринбург", "+5"), ("челябинск", "+5"), ("магнитогорск", "+5"),
+    ("миасс", "+5"), ("златоуст", "+5"), ("тюмен", "+5"), ("сургут", "+5"),
+    ("новый уренгой", "+5"), ("уфа", "+5"), ("сибай", "+5"), ("перм", "+5"),
+    ("чайковский", "+5"), ("курган", "+5"), ("оренбург", "+5"),
+    ("томск", "+7"), ("омск", "+6"),
+    ("новосибирск", "+7"), ("бердск", "+7"), ("барнаул", "+7"),
+    ("кемерово", "+7"), ("новокузнецк", "+7"), ("красноярск", "+7"),
+    ("иркутск", "+8"), ("ангарск", "+8"), ("улан-удэ", "+8"),
+    ("чита", "+9"), ("якутск", "+9"),
+    ("владивосток", "+10"), ("хабаровск", "+10"), ("комсомольск-на-амуре", "+10"),
+    ("мариуполь", "+3"),
+]
+
+
+def _tz_from_spec(spec: str):
+    if spec.startswith("+") or spec.startswith("-"):
+        return timezone(timedelta(hours=int(spec)))
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(spec)
+    except Exception:
+        return timezone(timedelta(hours=3))
+
+
+def location_timezone(country: Optional[str], city: Optional[str]):
+    city_l = str(city or "").lower().replace("ё", "е")
+    for key, spec in CITY_TIMEZONES:
+        if re.search(rf"(?<![а-яa-z]){re.escape(key.replace('ё', 'е'))}", city_l):
+            return _tz_from_spec(spec)
+    country_l = str(country or "").strip().lower()
+    if country_l in COUNTRY_TIMEZONES:
+        return _tz_from_spec(COUNTRY_TIMEZONES[country_l])
+    return timezone(timedelta(hours=3))
+
+
+def location_now(country: Optional[str], city: Optional[str]) -> datetime:
+    """Текущее местное время в городе (без tzinfo, как moscow_now)."""
+    return datetime.now(timezone.utc).astimezone(location_timezone(country, city)).replace(tzinfo=None)
+
+
+def city_now_for(city: Optional[str], country: Optional[str] = None) -> datetime:
+    if city and not country:
+        for group in LIVE_GROUPS:
+            if group.get("city") == city:
+                country = group.get("country")
+                break
+    if not city:
+        return moscow_now()
+    return location_now(country, city)
+
+
+def offset_from_moscow(city: Optional[str], country: Optional[str] = None) -> timedelta:
+    """Насколько местное время города отличается от московского."""
+    if not city:
+        return timedelta(0)
+    if not country:
+        for group in LIVE_GROUPS:
+            if group.get("city") == city:
+                country = group.get("country")
+                break
+    now = datetime.now(timezone.utc)
+    return now.astimezone(location_timezone(country, city)).utcoffset() - timedelta(hours=3)
+
+
 def escape_html(text: str) -> str:
     return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def visible_length(text: str) -> int:
+    """Длина текста так, как её считает Telegram: без HTML-тегов и адресов ссылок."""
+    plain = re.sub(r"<[^>]+>", "", text)
+    plain = re.sub(r"&(?:amp|lt|gt|quot|#\d+);", "x", plain)
+    # Telegram считает лимит в UTF-16: эмодзи занимают по 2 символа.
+    return len(plain.encode("utf-16-le")) // 2
+
+
 def split_long_message(text: str, limit: int = MAX_MESSAGE_LEN) -> List[str]:
     parts = []
-    while len(text) > limit:
-        cut = text.rfind("\n", 0, limit)
-        if cut == -1:
-            cut = limit
-        parts.append(text[:cut].strip())
-        text = text[cut:].lstrip()
-    if text.strip():
-        parts.append(text.strip())
-    return parts
+    current: List[str] = []
+    current_len = 0
+    for line in text.split("\n"):
+        line_len = visible_length(line) + 1
+        if current and current_len + line_len > limit:
+            parts.append("\n".join(current).strip())
+            current, current_len = [], 0
+        while visible_length(line) > limit and "<" not in line:
+            # Очень длинная строка без разметки — режем по лимиту.
+            parts.append(line[:limit])
+            line = line[limit:]
+        current.append(line)
+        current_len += visible_length(line) + 1
+    if "\n".join(current).strip():
+        parts.append("\n".join(current).strip())
+    return [p for p in parts if p]
 
 
 def time_to_minutes(hhmm: str) -> int:
@@ -357,7 +464,8 @@ def normalize_user_sub(data: Optional[dict]) -> dict:
     live_settings_raw = data.get("live_settings") if isinstance(data.get("live_settings"), dict) else data.get("livesettings")
 
     return {
-        "country": data.get("country") if isinstance(data.get("country"), str) else None,
+        # «Россиия» — старая опечатка в таблице; подписчиков переводим на правильное название.
+        "country": ("Россия" if data.get("country") == "Россиия" else data.get("country")) if isinstance(data.get("country"), str) else None,
         "city": data.get("city") if isinstance(data.get("city"), str) else None,
         "all_online": bool(data.get("all_online", data.get("allonline", False))),
         "all_live": bool(data.get("all_live", data.get("alllive", False))),
@@ -959,7 +1067,8 @@ def format_live_subscription_info(group: dict, user_data: dict) -> str:
         f"🏙 <b>{escape_html(name)}</b>\n\n"
         f"Город: <b>{escape_html(get_country_city_label(country, city))}</b>\n"
         f"Адрес: {escape_html(address) if address else 'не указан'}\n"
-        f"Расписание: {escape_html(days)}\n\n"
+        + (f"{build_map_link_html(country, city, address)}\n" if build_map_link_html(country, city, address) else "")
+        + f"Расписание: {escape_html(days)}\n\n"
         f"Подписка: <b>{status}</b>"
     )
 
@@ -1063,7 +1172,7 @@ def get_live_groups_for_city(city: str, country: Optional[str] = None) -> List[d
 
 
 def get_live_groups_for_day(city: str, day_index: int, country: Optional[str] = None):
-    now = moscow_now()
+    now = city_now_for(city, country)
     target_date = now.date() + timedelta(days=(day_index - now.weekday()) % 7)
     result = []
     for group in get_live_groups_for_city(city, country):
@@ -1078,7 +1187,7 @@ def get_live_week(city: str, country: Optional[str] = None) -> str:
     if not city_groups:
         return f"В городе «{escape_html(city)}» живых групп не найдено."
     parts = [f"🏙 Живые группы: {escape_html(get_country_city_label(country, city))}:"]
-    today = moscow_now().date()
+    today = city_now_for(city, country).date()
     monday = today - timedelta(days=today.weekday())
     for offset in range(7):
         target_date = monday + timedelta(days=offset)
@@ -1097,7 +1206,7 @@ def get_live_week(city: str, country: Optional[str] = None) -> str:
         }
         if items:
             parts.append(format_day_header(day_name, target_date.strftime("%d.%m")))
-            parts.append(render_live_group_list(sorted(items, key=lambda x: x[2])))
+            parts.append(render_live_group_list(sorted(items, key=lambda x: x[2]), country, city))
             parts.append("")
     if parts and parts[-1] == "":
         parts.pop()
@@ -1198,10 +1307,12 @@ def format_live_group_card_for_city_list(index: int, group: dict, include_city: 
     if include_city:
         city_label = get_country_city_label(group.get("country"), group.get("city", ""))
         city_line = f"\n🏙 {escape_html(city_label)}" if city_label else ""
+    map_link = build_map_link_html(group.get("country"), group.get("city"), group.get("address", ""))
     return (
         f"<b>{index}. {name}</b>{city_line}\n"
         f"🕒 {schedule}\n"
         f"📍 {address}"
+        + (f"\n{map_link}" if map_link else "")
     )
 
 
@@ -1450,13 +1561,94 @@ def format_online_group_with_sub(time_str: str, name: str, url: str, user_data: 
     return f'• <b>{time_str}</b> — <a href="{url}">{escape_html(name)}</a>{bell}'
 
 
-def format_live_group(name: str, address: str, start: str, end: str, is_work_meeting: bool = False) -> str:
+MAP_SKIP_SEGMENT = re.compile(
+    r"(?i)(?<![а-яё])(код|домофон|подъезд|подьезд|этаж|офис|оф\.|кабинет|каб\.?(?=[\s\d])|комнат|ауд\.|эт\.|вход|звонить|звонок|калитк|цоколь|подвал|помещени|аудитори|дверь|на двери|парадн)"
+)
+MAP_NO_ADDRESS = re.compile(r"(?i)(уточн|не указан|по телефону|информация о месте)")
+MAP_ABBREVIATIONS = {
+    "ул", "д", "г", "м", "пер", "пр", "ш", "лит", "корп", "стр", "пл", "наб", "мкр", "оф", "каб",
+    "просп", "пр-т", "пр-кт", "им", "ст", "р-н", "обл", "св", "кв", "о", "в.о", "б", "бул", "туп", "пос", "пгт",
+    "а", "к", "с", "сб", "ср", "вс", "пн", "вт", "чт", "пт",
+}
+YANDEX_MAP_COUNTRIES = {"россия", "беларусь", "казахстан", "узбекистан", "кыргызстан", "армения", "азербайджан", "грузия", "украина"}
+
+
+def _split_address_sentences(text: str) -> List[str]:
+    chunks = re.split(r"(?<=\.)\s+", text)
+    sentences: List[str] = []
+    for chunk in chunks:
+        if sentences:
+            prev = sentences[-1]
+            last_word = re.split(r"[\s,;(]+", prev.rstrip("."))[-1].lower()
+            if prev.endswith(".") and (last_word in MAP_ABBREVIATIONS or (len(last_word) <= 2 and last_word.isalpha())):
+                sentences[-1] = f"{prev} {chunk}"
+                continue
+        sentences.append(chunk)
+    return sentences
+
+
+def clean_address_for_map(address: str) -> str:
+    """Оставляет от адреса только то, что поймёт поиск карт: улицу и дом."""
+    text = re.sub(r"<[^>]+>", " ", str(address or ""))
+    text = re.split(r"(?i)\s*Контакт", text)[0]
+    text = re.sub(r"https?://\S+|t\.me/\S+|@\w+", " ", text)
+    text = re.sub(r"\+?\d[\d\s()\-]{8,}\d", " ", text)
+    text = re.sub(r"\([^)]*\)", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    sentences = [s_.strip() for s_ in _split_address_sentences(text) if s_.strip()]
+    # Берём первое «предложение» с номером дома: остальное обычно пояснения.
+    street = next((s_ for s_ in sentences if re.search(r"\d", s_)), "")
+    if not street:
+        return ""
+    kept = []
+    for seg in re.split(r"[;,]", street):
+        match = MAP_SKIP_SEGMENT.search(seg)
+        if match:
+            seg = seg[:match.start()]
+        seg = seg.strip(" .:-—№")
+        # «1 этаж», «412 офис»: после обрезки остаётся голая цифра — её не берём.
+        if seg and not (match and re.fullmatch(r"[\d\s\-]+", seg)):
+            kept.append(seg)
+        if match:
+            break
+    return re.sub(r"\s+", " ", ", ".join(kept)).strip(" ,.")
+
+
+def build_map_url(country: Optional[str], city: Optional[str], address: str) -> Optional[str]:
+    if not address:
+        return None
+    street = clean_address_for_map(address)
+    if MAP_NO_ADDRESS.search(street):
+        return None
+    if len(street) < 4:
+        return None
+    city_clean = re.sub(r"\s+", " ", re.sub(r"[()]", " ", str(city or ""))).strip()
+    query_parts = [city_clean] if city_clean and city_clean.lower() not in street.lower() else []
+    query_parts.append(street)
+    country_l = str(country or "Россия").strip().lower()
+    if country_l not in YANDEX_MAP_COUNTRIES:
+        if country:
+            query_parts.append(str(country).strip())
+        return "https://www.google.com/maps/search/?api=1&query=" + quote_plus(", ".join(query_parts))
+    return "https://yandex.ru/maps/?text=" + quote_plus(", ".join(query_parts))
+
+
+def build_map_link_html(country: Optional[str], city: Optional[str], address: str) -> str:
+    url = build_map_url(country, city, address)
+    if not url:
+        return ""
+    return f'🗺 <a href="{escape_html(url)}">Открыть на карте</a>'
+
+
+def format_live_group(name: str, address: str, start: str, end: str, is_work_meeting: bool = False, country: Optional[str] = None, city: Optional[str] = None) -> str:
     label = " 🔧" if is_work_meeting else ""
-    return (
+    text = (
         f"🕒 <b>{escape_html(start)}–{escape_html(end)}</b>{label}\n"
         f"<b>{escape_html(name)}</b>\n"
         f"📍 {escape_html(address)}"
     )
+    map_link = build_map_link_html(country, city, address) if city else ""
+    return f"{text}\n{map_link}" if map_link else text
 
 
 def format_live_group_with_sub(name: str, address: str, start: str, end: str, is_work_meeting: bool, user_data: dict) -> str:
@@ -1474,9 +1666,9 @@ def format_live_group_compact(name: str, address: str, start: str, end: str, is_
     return f"• <b>{escape_html(start)}–{escape_html(end)}</b> — {escape_html(name)}{label} — {escape_html(address)}"
 
 
-def render_live_group_list(items) -> str:
+def render_live_group_list(items, country: Optional[str] = None, city: Optional[str] = None) -> str:
     return "\n\n".join(
-        format_live_group(name, address, start, end, is_work_meeting)
+        format_live_group(name, address, start, end, is_work_meeting, country, city)
         for name, address, start, end, is_work_meeting in items
     )
 
@@ -1498,13 +1690,31 @@ CONTACTS_TEXT = (
 )
 
 
+START_TEXT = (
+    "👋 <b>Расписание групп ВДА</b>\n\n"
+    "Здесь онлайн-встречи и живые группы в разных городах.\n\n"
+    "🔎 <b>Чтобы найти группу, просто напишите город или название</b> — например, "
+    "«Казань» или «Парус».\n\n"
+    "Кнопки внизу:\n"
+    "🌐 Онлайн-встречи — расписание на сегодня и неделю\n"
+    "🏙 Живые встречи — группы по городам\n"
+    "🔔 Подписки — утренняя сводка и напоминания о ваших группах\n\n"
+    "Справка — /help"
+)
+
+MAIN_MENU_TEXT = (
+    "🏠 <b>Главное меню</b>\n\n"
+    "Выберите раздел кнопками внизу или просто напишите город или название группы."
+)
+
+
 HELP_TEXT = (
     '<b>Помощь</b>\n\n'
     '<b>Главные разделы</b>\n'
     '🌐 Онлайн-встречи — расписание онлайн-групп по дням.\n'
     '🏙 Живые встречи — очные группы по стране, городу и дню недели.\n'
     '🔔 Мои подписки — выбранные группы, утреннее расписание и напоминания.\n'
-    '🔎 Найти группу или город — поиск по онлайн-группам, живым группам и городам.\n📩 Контакты — куда писать по вопросам актуализации информации о группах.\n\n'
+    '🔎 Найти группу или город — поиск по онлайн-группам, живым группам и городам. Можно и без кнопки: просто напишите город или название группы.\n📩 Контакты — куда писать по вопросам актуализации информации о группах.\n\n'
     '<b>Команды</b>\n'
     '/start — открыть главное меню.\n'
     '/help — показать эту справку.\n'
@@ -1512,7 +1722,8 @@ HELP_TEXT = (
     '<b>Подписки</b>\n'
     'Можно подписаться на все онлайн-группы, все живые группы выбранного города или отдельные группы. '
     'Утренняя сводка и напоминания за 1/2 часа настраиваются отдельно для онлайн- и живых встреч. '
-    'Сводку можно отключить, оставив только напоминания перед началом групп.'
+    'Сводку можно отключить, оставив только напоминания перед началом групп.\n'
+    'Для живых групп время сводки и напоминаний — местное время вашего города.'
 )
 
 
@@ -1862,6 +2073,8 @@ async def safe_edit_text(message: Message, text: str, **kwargs):
 
 
 async def send_or_edit(target: CallbackQuery | Message, text: str, **kwargs):
+    # Ссылки на карты и группы не должны раздувать сообщения превью.
+    kwargs.setdefault("disable_web_page_preview", True)
     if isinstance(target, CallbackQuery):
         await safe_edit_text(target.message, text, **kwargs)
         await safe_callback_answer(target)
@@ -1870,6 +2083,7 @@ async def send_or_edit(target: CallbackQuery | Message, text: str, **kwargs):
 
 
 async def send_long_text(target: CallbackQuery | Message, header_text: Optional[str], full_text: str, final_markup: Optional[InlineKeyboardMarkup] = None, **kwargs):
+    kwargs.setdefault("disable_web_page_preview", True)
     parts = split_long_message(full_text)
     if isinstance(target, CallbackQuery):
         if header_text:
@@ -1900,7 +2114,7 @@ def get_remaining_online_today(now_dt: Optional[datetime] = None):
 
 
 def get_remaining_live_today(city: str, country: Optional[str] = None, now_dt: Optional[datetime] = None):
-    now_dt = now_dt or moscow_now()
+    now_dt = now_dt or city_now_for(city, country)
     now_minutes = now_dt.hour * 60 + now_dt.minute
     return [
         item
@@ -1943,7 +2157,7 @@ def build_remaining_online_text(now_dt: Optional[datetime] = None) -> str:
 
 
 def build_remaining_live_text(city: str, country: Optional[str] = None, now_dt: Optional[datetime] = None) -> str:
-    now_dt = now_dt or moscow_now()
+    now_dt = now_dt or city_now_for(city, country)
     day_name = DAYS[now_dt.weekday()]
     live_groups = get_remaining_live_today(city, country, now_dt)
     city_label = get_country_city_label(country, city)
@@ -1968,7 +2182,8 @@ def get_today_live_subscriptions(user_data: dict):
     city = user_data.get("city")
     if not city:
         return []
-    return [item for item in get_live_groups_for_day(city, moscow_now().weekday(), user_data.get("country")) if is_user_subscribed_to_live(user_data, item[0])]
+    day_index = city_now_for(city, user_data.get("country")).weekday()
+    return [item for item in get_live_groups_for_day(city, day_index, user_data.get("country")) if is_user_subscribed_to_live(user_data, item[0])]
 
 
 def _trim_daily_items(items: list, limit: int = DAILY_SUMMARY_LIMIT):
@@ -1993,7 +2208,10 @@ def build_daily_message(
     limit_per_section: int = DAILY_SUMMARY_LIMIT,
     test_mode: bool = False,
 ) -> Optional[str]:
-    day_index = moscow_now().weekday()
+    if include_online or not user_data.get("city"):
+        day_index = moscow_now().weekday()
+    else:
+        day_index = city_now_for(user_data.get("city"), user_data.get("country")).weekday()
     online_groups = get_today_online_subscriptions(user_data) if include_online else []
     live_groups = get_today_live_subscriptions(user_data) if include_live else []
     if not online_groups and not live_groups:
@@ -2067,7 +2285,7 @@ def build_live_multi_reminder(start: str, items: List[Tuple[str, str, bool]], mi
     return "\n".join(lines)
 
 
-def build_combined_reminder(start: str, online_items: List[Tuple[str, str]], live_items: List[Tuple[str, str, bool]], minutes_before: int) -> str:
+def build_combined_reminder(start: str, online_items: List[Tuple[str, str]], live_items: List[Tuple[str, str, bool]], minutes_before: int, live_start: Optional[str] = None, live_location: Optional[Tuple[Optional[str], Optional[str]]] = None) -> str:
     """One reminder for all subscribed groups that start at the same time."""
     before_text = reminder_before_text(minutes_before)
     total = len(online_items) + len(live_items)
@@ -2087,7 +2305,14 @@ def build_combined_reminder(start: str, online_items: List[Tuple[str, str]], liv
             else f"Напоминание: {before_text} начнутся живые группы."
         )
 
-    lines = [header, "", f"Начало: <b>{start}</b>"]
+    if live_items and live_start and live_start != start:
+        if online_items:
+            start_line = f"Начало: <b>{start}</b> по Москве (<b>{live_start}</b> по местному)"
+        else:
+            start_line = f"Начало: <b>{live_start}</b>"
+    else:
+        start_line = f"Начало: <b>{start}</b>"
+    lines = [header, "", start_line]
 
     if online_items:
         lines.extend(["", "🌐 <b>Онлайн</b>"])
@@ -2099,6 +2324,10 @@ def build_combined_reminder(start: str, online_items: List[Tuple[str, str]], liv
         for name, address, is_work_meeting in sorted(live_items, key=lambda x: x[0].lower()):
             label = " 🔧" if is_work_meeting else ""
             lines.append(f"• <b>{escape_html(name)}</b>{label} — {escape_html(address)}")
+            country_, city_ = live_location or (None, None)
+            map_link = build_map_link_html(country_, city_, address)
+            if map_link:
+                lines.append(f"  {map_link}")
 
     return "\n".join(lines)
 
@@ -2135,13 +2364,23 @@ def collect_due_reminders(user_data: dict, now_dt: datetime):
 
     city = user_data.get("city")
     if city and get_live_settings(user_data).get("remind_enabled", True):
-        for name, address, start, _, is_work_meeting in get_live_groups_for_day(city, now_dt.weekday(), user_data.get("country")):
+        # Живые группы: сравниваем с местным временем города, а не с московским.
+        offset = offset_from_moscow(city, user_data.get("country"))
+        local_dt = now_dt + offset
+        local_minutes = local_dt.hour * 60 + local_dt.minute
+        offset_minutes = round(offset.total_seconds() / 60)
+        for name, address, start, _, is_work_meeting in get_live_groups_for_day(city, local_dt.weekday(), user_data.get("country")):
             if not is_user_subscribed_to_live(user_data, name):
                 continue
             for minutes_before in get_live_settings(user_data)["remind_before"]:
-                if time_to_minutes(start) - now_minutes == minutes_before:
-                    bucket = combined_due.setdefault((start, minutes_before), {"online": [], "live": []})
+                if time_to_minutes(start) - local_minutes == minutes_before:
+                    # Ключ группировки — московское время начала, чтобы совпадающие
+                    # по факту онлайн- и живые встречи шли одним сообщением.
+                    msk_start_min = (time_to_minutes(start) - offset_minutes) % (24 * 60)
+                    msk_start = f"{msk_start_min // 60:02d}:{msk_start_min % 60:02d}"
+                    bucket = combined_due.setdefault((msk_start, minutes_before), {"online": [], "live": [], "live_start": start})
                     bucket["live"].append((name, address, is_work_meeting))
+                    bucket["live_start"] = start
 
     for (start, minutes_before), payload in sorted(combined_due.items(), key=lambda x: (x[0][0], x[0][1])):
         online_items = payload.get("online", [])
@@ -2155,8 +2394,8 @@ def collect_due_reminders(user_data: dict, now_dt: datetime):
             minutes_before,
         )
         if reminders_meta.get(key) != today_str:
-            disable_preview = bool(online_items)
-            due.append((key, build_combined_reminder(start, online_items, live_items, minutes_before), disable_preview))
+            disable_preview = True
+            due.append((key, build_combined_reminder(start, online_items, live_items, minutes_before, payload.get("live_start"), (user_data.get("country"), user_data.get("city"))), disable_preview))
 
     return due
 
@@ -2178,10 +2417,14 @@ async def send_daily_notifications(bot: Bot, now_dt: datetime):
         online_settings = get_online_settings(user_data)
         live_settings = get_live_settings(user_data)
 
+        # Сводка по живым группам приходит в выбранный час по местному времени города.
+        live_now = now_dt + offset_from_moscow(user_data.get("city"), user_data.get("country"))
+        live_today_str = live_now.strftime("%Y-%m-%d")
+
         legacy_daily_sent = meta.get("last_daily_sent") == today_str
         has_split_daily_marks = bool(meta.get("last_daily_sent_online") or meta.get("last_daily_sent_live"))
         online_already_sent = meta.get("last_daily_sent_online") == today_str or (legacy_daily_sent and not has_split_daily_marks)
-        live_already_sent = meta.get("last_daily_sent_live") == today_str or (legacy_daily_sent and not has_split_daily_marks)
+        live_already_sent = meta.get("last_daily_sent_live") == live_today_str or (legacy_daily_sent and not has_split_daily_marks)
 
         should_send_online = (
             has_online_subscriptions(user_data)
@@ -2192,7 +2435,7 @@ async def send_daily_notifications(bot: Bot, now_dt: datetime):
         should_send_live = (
             has_live_subscriptions(user_data)
             and live_settings.get("daily_enabled", True)
-            and now_dt.hour == live_settings["daily_hour"]
+            and live_now.hour == live_settings["daily_hour"]
             and not live_already_sent
         )
 
@@ -2211,7 +2454,7 @@ async def send_daily_notifications(bot: Bot, now_dt: datetime):
         if should_send_online:
             meta["last_daily_sent_online"] = today_str
         if should_send_live:
-            meta["last_daily_sent_live"] = today_str
+            meta["last_daily_sent_live"] = live_today_str
         subs[uid] = user_data
         STORE.save_all(subs)
 
@@ -2603,6 +2846,11 @@ def live_subscription_card_text(group: dict, user_data: dict) -> str:
         "",
         f"🕒 {escape_html(schedule)}",
         f"📍 {escape_html(address) if address else 'Адрес не указан'}",
+    ]
+    map_link = build_map_link_html(country, city, address)
+    if map_link:
+        lines.append(map_link)
+    lines += [
         f"Город: <b>{escape_html(get_country_city_label(country, city))}</b>",
         "",
         f"Подписка: <b>{status}</b>",
@@ -2694,7 +2942,8 @@ async def settings_menu(target: CallbackQuery | Message, group_type: str):
 
     text = (
         f"<b>{title}</b>\n\n"
-        f"🕖 <b>Утренняя сводка</b>\n"
+        + ("" if is_online else "Время — местное для вашего города.\n\n")
+        + f"🕖 <b>Утренняя сводка</b>\n"
         f"Статус: <b>{daily_text}</b>\n"
         "Нажмите выбранное время ещё раз, чтобы выключить сводку.\n\n"
         f"⏰ <b>Напоминания о встречах</b>\n"
@@ -2716,7 +2965,7 @@ async def noop_callback(callback: CallbackQuery):
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
-        "🏠 <b>Главное меню</b>\n\nИспользуйте кнопки нижнего меню.",
+        START_TEXT,
         parse_mode=HTML_MODE,
         reply_markup=REPLY_MAIN_MENU,
     )
@@ -2735,15 +2984,13 @@ async def cmd_help(message: Message, state: FSMContext):
 @DP.callback_query(F.data == "mainmenu")
 async def main_menu_callback(callback: CallbackQuery, state: FSMContext):
     await state.clear()
+    # Нижнее меню постоянное, поэтому просто превращаем текущее сообщение
+    # в «Главное меню», не присылая новых сообщений.
     await safe_edit_text(
         callback.message,
-        "🏠 <b>Главное меню</b>",
+        MAIN_MENU_TEXT,
         parse_mode=HTML_MODE,
         reply_markup=None,
-    )
-    await callback.message.answer(
-        "Используйте кнопки нижнего меню.",
-        reply_markup=REPLY_MAIN_MENU,
     )
     await safe_callback_answer(callback)
 
@@ -3378,10 +3625,10 @@ async def live_today(callback: CallbackQuery):
     cid = callback.data[len("livetoday"):]
     country, city = resolve_location_id(cid)
     user_data = get_user_sub(str(callback.from_user.id))
-    day_index = moscow_now().weekday()
+    day_index = city_now_for(city, country).weekday()
     groups = get_live_groups_for_day(city, day_index, country)
     text = f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>\n\n{format_day_header(DAYS[day_index])}\n\n"
-    text += render_live_group_list(groups) if groups else "Нет групп."
+    text += render_live_group_list(groups, country, city) if groups else "Нет групп."
     await send_or_edit(callback, text, parse_mode=HTML_MODE, reply_markup=back_markup("← К городу", f"liveperiod{cid}"))
 
 
@@ -3426,7 +3673,7 @@ async def live_show_day(callback: CallbackQuery):
     user_data = get_user_sub(str(callback.from_user.id))
     groups = get_live_groups_for_day(city, day_index, country)
     text = f"🏙 <b>{escape_html(get_country_city_label(country, city))}</b>\n\n{format_day_header(DAYS[day_index])}\n\n"
-    text += render_live_group_list(groups) if groups else "Нет групп."
+    text += render_live_group_list(groups, country, city) if groups else "Нет групп."
     await send_or_edit(callback, text, parse_mode=HTML_MODE, reply_markup=back_markup("← К дням", f"livechooseday{cid}"))
 
 
@@ -3542,8 +3789,17 @@ async def btn_search_group(message: Message, state: FSMContext):
 
 @DP.message()
 async def fallback(message: Message, state: FSMContext):
-    if await state.get_state() is None:
-        await message.answer("Используйте кнопки меню 👇", reply_markup=REPLY_MAIN_MENU)
+    if await state.get_state() is not None:
+        return
+    text = (message.text or "").strip()
+    # Любой текст без нажатия кнопки считаем поиском: «Казань», «Парус» и т.п.
+    if text and not text.startswith("/"):
+        await search_group_input(message, state)
+        return
+    await message.answer(
+        "Напишите город или название группы — или выберите раздел кнопками меню 👇",
+        reply_markup=REPLY_MAIN_MENU,
+    )
 
 
 async def main():
