@@ -160,7 +160,7 @@ ONLINE_SCHEDULE = {
         ("14:00", "Венеция", "https://t.me/joinchat/AocB9y6QC_k2ZjJi"),
         ("14:00", "ВДА вокруг света", "https://t.me/+nFn14RqYkyozZmUy"),
         ("18:00", "Весна", "https://t.me/vdavesna_2021"),
-        ("18:00", "Живые (Прага)", "https://t.me/vdapraha"),
+        ("20:00", "Живые (Прага)", "https://t.me/vdapraha"),
         ("19:00", "Рассвет", "https://t.me/+OOw9IMnM5x1hNDJi"),
         ("19:00", "Маяк ВДА", "https://t.me/+1XGQ4SDkR8M0N2Yy"),
         ("20:00", "Феникс", "https://t.me/+1GAp8vi4hyNmMzUy"),
